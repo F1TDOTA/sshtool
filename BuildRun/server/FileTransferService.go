@@ -100,7 +100,7 @@ func (s *FileTransferService) handleFile(confObj *conf.SshAllHost, srcIp string,
 	if err != nil {
 		return fmt.Errorf("jsonToast marshal err %s\n", err)
 	}
-	s.toastSvr.SendMsg(string(jsonStr))
+	s.toastSvr.SendToastMsg(string(jsonStr))
 
 	return nil
 }

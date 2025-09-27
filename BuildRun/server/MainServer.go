@@ -35,6 +35,8 @@ type Server struct {
 	CmdService   *CommandExecService
 	ToastCh      chan string
 	ToastService *ToastService
+	DingCh       chan string
+	DingService  *DdNoticeService
 }
 
 func NewServer(ipAddr string, bindPort int) *Server {
@@ -52,6 +54,10 @@ func NewServer(ipAddr string, bindPort int) *Server {
 	s.ToastCh = make(chan string)
 	s.ToastService = NewToastService(s.ToastCh)
 	s.ToastService.Run()
+
+	// 初始化钉钉消息
+	s.DingService = NewDdNoticeService(s.ToastService)
+	s.DingService.Run()
 
 	// 初始化scp会话
 	s.fileService = NewFileTransferService(s.ToastService)
@@ -129,6 +135,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 		break
 	case "notify":
 		s.ToastService.HandleCommand(cmdJson)
+		break
+	case "notify_dd":
+		s.DingService.HandleCommand(cmdJson)
+		fmt.Printf("process finished\n")
 		break
 	default:
 		fmt.Printf("unknown command: %s\n", cmd)

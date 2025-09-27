@@ -58,7 +58,7 @@ func (s *CommandExecService) HandleCommand(confObj *conf.SshAllHost, cmdJson Jso
 	if err != nil {
 		return fmt.Errorf("jsonToast marshal err %s\n", err)
 	}
-	s.toastSvr.SendMsg(string(jsonStr))
+	s.toastSvr.SendToastMsg(string(jsonStr))
 
 	return nil
 }

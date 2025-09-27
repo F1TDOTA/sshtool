@@ -56,9 +56,9 @@ func (t *ToastService) Run() {
 
 func (t *ToastService) HandleCommand(cmdJson JsonCmd) {
 	//命令格式如下：
-	//{"oper_action":"notify","msg":"test message"}
+	//{"oper_action":"notify","warn_msg":"test message"}
 	msg := cmdJson.WarnMsg
-	
+
 	var jsonToast = &JsonToastCmd{
 		AppId:   "自定义告警",
 		Message: msg,
@@ -70,10 +70,10 @@ func (t *ToastService) HandleCommand(cmdJson JsonCmd) {
 		return
 	}
 
-	t.SendMsg(string(jsonStr))
+	t.SendToastMsg(string(jsonStr))
 }
 
-func (t *ToastService) SendMsg(msg string) {
+func (t *ToastService) SendToastMsg(msg string) {
 	t.ToastCh <- msg
 }
 
