@@ -1,0 +1,156 @@
+#include <bits/stdc++.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int test2()
+{
+    printf("this is a test\n");
+    return 0;
+}
+
+#define CACHE_LINE __attribute__((aligned(64)))
+
+struct S3
+{
+    int tt_new;
+    int old;
+    int test;
+
+
+};
+
+struct S1
+{
+    int r1;
+    int r2;
+    int r3;
+    S1() : r1(1), r2(2), r3(3) {}
+} CACHE_LINE;
+
+void add(const S1 smember[], int members, long &total)
+{
+    int idx = members;
+    do
+    {
+        total += smember[idx].r1;
+        total += smember[idx].r2;
+        total += smember[idx].r3;
+    } while (--idx);
+}
+
+int test_autoadd(int a)
+{
+    a++;
+    return a;
+}
+
+int test_autoadd2(int a)
+{
+    ++a;
+    return a;
+}
+
+int test_autoadd3(int i)
+{
+    int a = ++i;
+    return a;
+}
+
+int test_autoadd4(int i)
+{
+    int b = i++;
+    return b;
+}
+
+int test_multi(int b)
+{
+    int a = 31;
+    return a * b;
+}
+
+// integer to string
+uint32_t u64ToAscii_v1(uint64_t value, char *dst)
+{
+    // Write backwards.
+    char *start = dst;
+    do
+    {
+        *dst++ = '0' + (value % 10);
+        value /= 10;
+    } while (value != 0);
+
+    const uint32_t result = dst - start;
+    // Reverse in place.
+    for (dst--; dst > start; start++, dst--)
+    {
+        std::iter_swap(dst, start);
+    }
+    return result;
+}
+
+int test_opt()
+{
+    const int size = 16;
+    int i;
+    float list[size];
+
+    if (i < 0 || i >= size)
+    {
+        std::cout << "Error: Index out of range" << std::endl;
+    }
+    else
+    {
+        list[i] += 1.0f;
+    }
+    return 0;
+}
+
+int test_opt1()
+{
+    const int size = 16;
+    int i;
+    float list[size];
+
+    if (i < 0 || i > size)
+    // if ((unsigned int)i >= (unsigned int)size)
+    {
+        std::cout << "Error: Index out of range" << std::endl;
+    }
+    else
+    {
+        list[i] += 1.0f;
+    }
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    struct timespec start, end;
+    printf("start to test\n");
+    clock_gettime(CLOCK_REALTIME, &start);  // 获取当前实时时间
+    // const int SIZE = 204800;
+    // S1 *smember = (S1 *)malloc(sizeof(S1) * SIZE);
+    // long total = 0L;
+    // int loop = 10000;
+    // while (--loop)
+    // { // 方便对比测试
+    //     add(smember, SIZE, total);
+    // }
+    // printf("%d\n", test_multi(2));
+    // test_autoadd(1);
+    // test_autoadd2(111);
+
+    // char temp[1024] = {0};
+    // int ret = u64ToAscii_v1(3124, temp);
+    // printf("%d: %s\n", ret, temp);
+
+    // test_autoadd3(1);
+    test_opt();
+    clock_gettime(CLOCK_REALTIME, &end);  // 获取当前实时时间
+    long long time =
+        (end.tv_sec - start.tv_sec) * 1000 * 1000 * 1000 + (end.tv_nsec - start.tv_nsec);
+    printf("time: %lldns\n", time);
+
+    return 0;
+}
