@@ -20,36 +20,52 @@ type ScpSess struct {
 	onlineStatus  int    // 在线状态
 }
 
-func (s *ScpSess) Reconnect() {
-	online := s.CheckAlive()
-	if online {
-		s.lastCheckTime = time.Now().Format("2006-01-02 15:04:05")
-		return
+func NewScpSess(hostConf *conf.SshHost) *ScpSess {
+	return &ScpSess{
+		hostConf:     hostConf,
+		sessClient:   nil,
+		onlineStatus: 0,
 	}
+}
 
-	// 重新建立连接
-	s.sessClient.Close()
-
+func (s *ScpSess) OpenSess(isReconnect bool) error {
 	// 认证配置
 	clientConf, err := auth.PasswordKey(s.hostConf.User, s.hostConf.Pass, ssh.InsecureIgnoreHostKey())
 	if err != nil {
-		fmt.Printf("ip: %s auth.PasswordKey error, ignore\n", s.hostConf.Host)
-		return
+		return fmt.Errorf("ip: %s auth.PasswordKey error, ignore\n", s.hostConf.Host)
 	}
 
 	// 建立SSH会话
 	ipAddr := fmt.Sprintf("%s:%s", s.hostConf.Host, s.hostConf.Port)
 	sshClient, err := ssh.Dial("tcp", ipAddr, &clientConf)
 	if err != nil {
-		fmt.Printf("reconnect ip: %s ssh.Dial error, ignore\n", s.hostConf.Host)
-		return
+		return fmt.Errorf("ip: %s ssh.Dial error, ignore\n", s.hostConf.Host)
 	}
 
+	tm := time.Now()
 	s.sessClient = sshClient
-	s.lastCheckTime = time.Now().Format("2006-01-02 15:04:05")
+	s.lastCheckTime = tm.Format("2006-01-02 15:04:05")
+	s.onlineStatus = 1
+	if !isReconnect {
+		s.createTime = tm.Format("2006-01-02 15:04:05")
+	}
+
+	fmt.Printf("ip: %s new scp session success, time: %s\n", s.hostConf.Host, s.createTime)
+	return nil
+}
+
+func (s *ScpSess) CloseSess() {
+	s.sessClient.Close()
+	s.sessClient = nil
+	s.createTime = ""
+	s.lastCheckTime = ""
 }
 
 func (s *ScpSess) CheckAlive() bool {
+	if s.sessClient == nil {
+		return false
+	}
+
 	sess, err := s.sessClient.NewSession()
 	if err != nil {
 		return false
@@ -57,6 +73,14 @@ func (s *ScpSess) CheckAlive() bool {
 
 	defer sess.Close()
 	return sess.Run("true") == nil
+}
+
+func (s *ScpSess) PrintStatus() {
+	fmt.Printf("scp ip: %s, session: %+v", s.hostConf.Host, s)
+}
+
+func (s *ScpSess) UpdateLastCheckTime() {
+	s.lastCheckTime = time.Now().Format("2006-01-02 15:04:05")
 }
 
 func (s *ScpSess) UploadFileToRemote(strLocalPath string, strRemotePath string) error {
@@ -112,80 +136,4 @@ func (s *ScpSess) DownFileToLocal(strRemotePath string, strLocalFile string) err
 
 	fmt.Printf("Successfully down file %s => %s\n", strRemotePath, strLocalFile)
 	return nil
-}
-
-type ScpSessMgr struct {
-	allSess map[string]*ScpSess
-}
-
-func NewScpSessMgr() *ScpSessMgr {
-	return &ScpSessMgr{
-		allSess: make(map[string]*ScpSess),
-	}
-}
-
-func (m *ScpSessMgr) createOne(hostConf *conf.SshHost, strIp string) {
-	// 认证配置
-	clientConf, err := auth.PasswordKey(hostConf.User, hostConf.Pass, ssh.InsecureIgnoreHostKey())
-	if err != nil {
-		fmt.Printf("ip: %s auth.PasswordKey error, ignore\n", strIp)
-		return
-	}
-
-	// 建立SSH会话
-	ipAddr := fmt.Sprintf("%s:%s", hostConf.Host, hostConf.Port)
-	sshClient, err := ssh.Dial("tcp", ipAddr, &clientConf)
-	if err != nil {
-		fmt.Printf("ip: %s ssh.Dial error, ignore\n", strIp)
-		return
-	}
-
-	// 放入会话池
-	tm := time.Now()
-	oneSess := &ScpSess{
-		hostConf:      hostConf,
-		sessClient:    sshClient,
-		createTime:    tm.Format("2006-01-02 15:04:05"),
-		lastCheckTime: tm.Format("2006-01-02 15:04:05"),
-		onlineStatus:  1,
-	}
-
-	fmt.Printf("ip: %s new scp session success, time: %s\n", strIp, oneSess.createTime)
-	m.allSess[strIp] = oneSess
-}
-
-func (m *ScpSessMgr) GetSession(c *conf.SshHost, strIp string) *ScpSess {
-	data, ok := m.allSess[strIp]
-	if ok {
-		return data
-	}
-
-	// 新建一个
-	m.createOne(c, strIp)
-	data, ok = m.allSess[strIp]
-	if ok {
-		return data
-	}
-
-	return nil
-}
-
-func (m *ScpSessMgr) DestroyAllSession() {
-	for _, v := range m.allSess {
-		v.sessClient.Close()
-	}
-}
-
-func (m *ScpSessMgr) PrintAllSess() {
-	fmt.Println("======scp sess start=================")
-	fmt.Printf("scp sess num: %d\n", len(m.allSess))
-	for ip, oneSess := range m.allSess {
-		fmt.Println("")
-		fmt.Printf("IP: %s\n", ip)
-		fmt.Printf("Status: %d\n", oneSess.onlineStatus)
-		fmt.Printf("CreateTime: %s\n", oneSess.createTime)
-		fmt.Printf("CheckTime: %s\n", oneSess.lastCheckTime)
-	}
-	fmt.Println("======scp sess end===================")
-	fmt.Println("")
 }

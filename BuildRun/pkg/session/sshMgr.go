@@ -42,11 +42,11 @@ func (m *SshMgr) GetOneSess(c *conf.SshHost, strIp string) *SshSess {
 	return nil
 }
 
-func (m *SshMgr) CloseSshMgr(strIp string) {
+func (m *SshMgr) DestroyAllSession() {
 	close(m.stopChan)
-	if sess, ok := m.AllSess[strIp]; ok {
-		sess.CloseSess()
-		delete(m.AllSess, strIp)
+	for ip, v := range m.AllSess {
+		v.CloseSess()
+		delete(m.AllSess, ip)
 	}
 }
 

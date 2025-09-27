@@ -16,17 +16,17 @@ type SshHost struct {
 	PrivateKey string `yaml:"private_key,omitempty"`
 }
 
-type SshConfig struct {
+type SshAllHost struct {
 	sshHosts map[string]*SshHost
 }
 
-func NewSshConfig() SshConfig {
-	return SshConfig{
+func NewSshConfig() SshAllHost {
+	return SshAllHost{
 		sshHosts: make(map[string]*SshHost),
 	}
 }
 
-func (h *SshConfig) LoadHostConf() {
+func (h *SshAllHost) LoadHostConf() {
 	data, err := os.ReadFile("./configs/ssh.yaml")
 	if err != nil {
 		fmt.Println(err)
@@ -51,7 +51,7 @@ func (h *SshConfig) LoadHostConf() {
 	fmt.Printf("total cnt is %d\n", len(h.sshHosts))
 }
 
-func (h *SshConfig) GetIpConf(strIp string) (*SshHost, bool) {
+func (h *SshAllHost) GetIpConf(strIp string) (*SshHost, bool) {
 	host, ok := h.sshHosts[strIp]
 	return host, ok
 }

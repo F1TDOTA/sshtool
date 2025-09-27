@@ -30,7 +30,7 @@ type Server struct {
 	ipAddr       string
 	bindPort     int
 	ln           net.Listener
-	confObj      *conf.SshConfig
+	confObj      *conf.SshAllHost
 	fileService  *FileTransferService
 	ToastCh      chan string
 	ToastService *ToastService

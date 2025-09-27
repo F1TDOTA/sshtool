@@ -72,6 +72,14 @@ func (s *SshSess) CheckAlive() bool {
 	return sess.Run("true") == nil
 }
 
+func (s *SshSess) PrintStatus() {
+	fmt.Printf("ssh ip: %s, session: %+v", s.hostConf.Host, s)
+}
+
+func (s *SshSess) UpdateLastCheckTime() {
+	s.lastCheckTime = time.Now().Format("2006-01-02 15:04:05")
+}
+
 func (s *SshSess) ExecCommand(cmdExec string) error {
 	if s.sessClient == nil {
 		return fmt.Errorf("ssh exec sess client is nil, try open session\n")

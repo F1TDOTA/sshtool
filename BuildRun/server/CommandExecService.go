@@ -23,7 +23,7 @@ func NewCommandExecService(toastSvr *ToastService) *CommandExecService {
 	}
 }
 
-func (s *CommandExecService) HandleCommand(confObj *conf.SshConfig, cmdJson JsonCmd) error {
+func (s *CommandExecService) HandleCommand(confObj *conf.SshAllHost, cmdJson JsonCmd) error {
 	//命令格式如下：
 	//{"oper_action":"exec_cmd","dst_host":"192.168.1.180","dst_path":"/home/r/", "cmd_exec":"ls -l"}
 	dstIp := cmdJson.DstHost

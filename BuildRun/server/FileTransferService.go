@@ -11,7 +11,7 @@ import (
 )
 
 type FileTransferService struct {
-	sessMgr  *session.ScpSessMgr
+	sessMgr  *session.ScpMgr
 	tempPath string
 	toastSvr *ToastService
 	AppId    string
@@ -45,14 +45,14 @@ func (s *FileTransferService) calMd5() (string, error) {
 	return md5Val, nil
 }
 
-func (s *FileTransferService) handleFile(confObj *conf.SshConfig, srcIp string, srcPath string, dstIp string, dstPath string) error {
+func (s *FileTransferService) handleFile(confObj *conf.SshAllHost, srcIp string, srcPath string, dstIp string, dstPath string) error {
 	// 编译机
 	srcHostConf, ok := confObj.GetIpConf(srcIp)
 	if ok != true {
 		return fmt.Errorf("srcIp %s conf not exists\n", srcIp)
 	}
 
-	sessSrc := s.sessMgr.GetSession(srcHostConf, srcIp)
+	sessSrc := s.sessMgr.GetOneSess(srcHostConf, srcIp)
 	if sessSrc == nil {
 		return fmt.Errorf("srcIp: %s get session fail\n", srcIp)
 	}
@@ -63,7 +63,7 @@ func (s *FileTransferService) handleFile(confObj *conf.SshConfig, srcIp string, 
 		return fmt.Errorf("dstIp %s conf not exists\n", dstIp)
 	}
 
-	sessDst := s.sessMgr.GetSession(dstHostConf, dstIp)
+	sessDst := s.sessMgr.GetOneSess(dstHostConf, dstIp)
 	if sessDst == nil {
 		return fmt.Errorf("dstIp: %s get session fail\n", dstIp)
 	}
@@ -102,7 +102,7 @@ func (s *FileTransferService) handleDir(dirPath string, dirRemotePath string) er
 	return nil
 }
 
-func (s *FileTransferService) HandleCommand(conObj *conf.SshConfig, cmdJson JsonCmd) error {
+func (s *FileTransferService) HandleCommand(conObj *conf.SshAllHost, cmdJson JsonCmd) error {
 
 	//命令格式如下：
 	//{"oper_action":"send_file","oper_type":"file","src_host":"192.168.1.240","src_path":"/home/u/test.cpp","dst_host":"192.168.1.180","dst_path":"/home/r/a.c"}
