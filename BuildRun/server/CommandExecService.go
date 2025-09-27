@@ -8,16 +8,14 @@ import (
 )
 
 type CommandExecService struct {
-	sessMgr  *session.SshMgr
-	strCmd   string
+	sessMgr  *session.SessMgr
 	toastSvr *ToastService
 	AppId    string
 }
 
 func NewCommandExecService(toastSvr *ToastService) *CommandExecService {
 	return &CommandExecService{
-		sessMgr:  session.NewSshMgr(),
-		strCmd:   "",
+		sessMgr:  session.NewSessMgr(),
 		toastSvr: toastSvr,
 		AppId:    "命令执行助手",
 	}
@@ -35,15 +33,19 @@ func (s *CommandExecService) HandleCommand(confObj *conf.SshAllHost, cmdJson Jso
 		return fmt.Errorf("ssh dstIp:%s not exist\n", dstIp)
 	}
 
-	sess := s.sessMgr.GetOneSess(c, dstIp)
+	sess := s.sessMgr.GetOneSess(session.SessTypeSSH, c, dstIp)
 	if sess == nil {
 		return fmt.Errorf("sessmgr get ip: %s sess fail\n", dstIp)
 	}
 
 	cmdExec = fmt.Sprintf("cd %s && %s", dstPath, cmdExec)
-	err := sess.ExecCommand(cmdExec)
-	if err != nil {
-		return err
+	if sshSess, ok := sess.(*session.SshSess); ok {
+		err := sshSess.ExecCommand(cmdExec)
+		if err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("session is not *SshSess, actual type: %T", sess)
 	}
 
 	// 弹出提示信息
@@ -64,5 +66,7 @@ func (s *CommandExecService) HandleCommand(confObj *conf.SshAllHost, cmdJson Jso
 func (s *CommandExecService) PrintAllSess() {
 	//命令格式如下：
 	//{"oper_action":"print_ssh_session"}
+	fmt.Println("======ssh sess start==================")
 	s.sessMgr.PrintAllSess()
+	fmt.Println("======ssh sess end====================")
 }

@@ -11,16 +11,15 @@ import (
 )
 
 type FileTransferService struct {
-	sessMgr  *session.ScpMgr
+	sessMgr  *session.SessMgr
 	tempPath string
 	toastSvr *ToastService
 	AppId    string
 }
 
 func NewFileTransferService(toastSvr *ToastService) *FileTransferService {
-	sessMgr := session.NewScpSessMgr()
 	return &FileTransferService{
-		sessMgr:  sessMgr,
+		sessMgr:  session.NewSessMgr(),
 		tempPath: "./buildrun.tmp",
 		toastSvr: toastSvr,
 		AppId:    "文件传输助手",
@@ -52,7 +51,7 @@ func (s *FileTransferService) handleFile(confObj *conf.SshAllHost, srcIp string,
 		return fmt.Errorf("srcIp %s conf not exists\n", srcIp)
 	}
 
-	sessSrc := s.sessMgr.GetOneSess(srcHostConf, srcIp)
+	sessSrc := s.sessMgr.GetOneSess(session.SessTypeSCP, srcHostConf, srcIp)
 	if sessSrc == nil {
 		return fmt.Errorf("srcIp: %s get session fail\n", srcIp)
 	}
@@ -63,24 +62,32 @@ func (s *FileTransferService) handleFile(confObj *conf.SshAllHost, srcIp string,
 		return fmt.Errorf("dstIp %s conf not exists\n", dstIp)
 	}
 
-	sessDst := s.sessMgr.GetOneSess(dstHostConf, dstIp)
+	sessDst := s.sessMgr.GetOneSess(session.SessTypeSCP, dstHostConf, dstIp)
 	if sessDst == nil {
 		return fmt.Errorf("dstIp: %s get session fail\n", dstIp)
 	}
 
 	// 下载文件到本地
-	err := sessSrc.DownFileToLocal(srcPath, s.tempPath)
-	if err != nil {
-		return fmt.Errorf("down file: %s to local: %s error: %s\n", srcPath, s.tempPath, err)
+	if scpSessSrc, ok := sessSrc.(*session.ScpSess); ok {
+		err := scpSessSrc.DownFileToLocal(srcPath, s.tempPath)
+		if err != nil {
+			return fmt.Errorf("down file: %s to local: %s error: %s\n", srcPath, s.tempPath, err)
+		}
+	} else {
+		return fmt.Errorf("sessSrc is not scp session: %T \n", sessSrc)
 	}
 
 	// 计算文件md5(不用处理返回值)
 	md5Val, err := s.calMd5()
 
 	// 上传文件
-	err = sessDst.UploadFileToRemote(s.tempPath, dstPath)
-	if err != nil {
-		return fmt.Errorf("upload file: %s to remote: %s error: %s\n", srcPath, dstPath, err)
+	if scpSessDst, ok := sessDst.(*session.ScpSess); ok {
+		err = scpSessDst.UploadFileToRemote(s.tempPath, dstPath)
+		if err != nil {
+			return fmt.Errorf("upload file: %s to remote: %s error: %s\n", srcPath, dstPath, err)
+		}
+	} else {
+		return fmt.Errorf("sessDst is not scp session: %T \n", sessDst)
 	}
 
 	// 弹出提示信息
@@ -124,5 +131,8 @@ func (s *FileTransferService) HandleCommand(conObj *conf.SshAllHost, cmdJson Jso
 func (s *FileTransferService) PrintAllSess() {
 	//命令格式如下：
 	//{"oper_action":"print_scp_session"}
+	fmt.Println("======scp sess start==================")
 	s.sessMgr.PrintAllSess()
+	fmt.Println("======scp sess end====================")
+	fmt.Println("")
 }

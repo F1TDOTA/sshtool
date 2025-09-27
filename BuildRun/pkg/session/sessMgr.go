@@ -7,16 +7,16 @@ import (
 	"time"
 )
 
+const (
+	SessTypeSSH = "ssh"
+	SessTypeSCP = "scp"
+)
+
 type SessMgr struct {
 	mu       sync.RWMutex
 	AllSess  map[string]Session
 	stopChan chan struct{}
 }
-
-const (
-	SessTypeSSH = "ssh"
-	SessTypeSCP = "scp"
-)
 
 func NewSessMgr() *SessMgr {
 	sessMgr := &SessMgr{
@@ -93,17 +93,12 @@ func (m *SessMgr) DestroyAllSession() {
 }
 
 func (m *SessMgr) PrintAllSess() {
-	fmt.Println("======sess start==================")
-
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	fmt.Printf("total sess num: %d\n", len(m.AllSess))
-	for _, sess := range m.AllSess {
-		sess.PrintStatus()
+	for ip, sess := range m.AllSess {
+		fmt.Printf("sess ip: %s, session: %+v\n", ip, sess)
 	}
-
-	fmt.Println("======sess end===================")
-	fmt.Println("")
 }
 
 func (m *SessMgr) checkAllSess(strIp string, sess Session) {

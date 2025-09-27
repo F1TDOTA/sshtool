@@ -32,9 +32,9 @@ type Server struct {
 	ln           net.Listener
 	confObj      *conf.SshAllHost
 	fileService  *FileTransferService
+	CmdService   *CommandExecService
 	ToastCh      chan string
 	ToastService *ToastService
-	CmdService   *CommandExecService
 }
 
 func NewServer(ipAddr string, bindPort int) *Server {
