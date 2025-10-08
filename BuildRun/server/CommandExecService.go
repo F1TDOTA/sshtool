@@ -38,7 +38,11 @@ func (s *CommandExecService) HandleCommand(confObj *conf.SshAllHost, cmdJson Jso
 		return fmt.Errorf("sessmgr get ip: %s sess fail\n", dstIp)
 	}
 
-	cmdExec = fmt.Sprintf("cd %s && %s", dstPath, cmdExec)
+	if dstPath != "" {
+		cmdExec = fmt.Sprintf("cd %s && %s", dstPath, cmdExec)
+	}
+	fmt.Printf("cmdExec:%s\n", cmdExec)
+
 	if sshSess, ok := sess.(*session.SshSess); ok {
 		err := sshSess.ExecCommand(cmdExec)
 		if err != nil {

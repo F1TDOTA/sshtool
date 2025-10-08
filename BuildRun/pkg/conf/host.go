@@ -16,42 +16,48 @@ type SshHost struct {
 	PrivateKey string `yaml:"private_key,omitempty"`
 }
 
-type SshAllHost struct {
-	sshHosts map[string]*SshHost
+type SshHostArray struct {
+	Hosts []SshHost `yaml:"hosts"`
 }
 
-func NewSshConfig() SshAllHost {
-	return SshAllHost{
-		sshHosts: make(map[string]*SshHost),
+type SshAllHost struct {
+	sshMapHosts map[string]*SshHost
+	confPath    string
+}
+
+func NewSshConfig() *SshAllHost {
+	return &SshAllHost{
+		sshMapHosts: make(map[string]*SshHost),
+		confPath:    "./configs/ssh.yaml",
 	}
 }
 
-func (h *SshAllHost) LoadHostConf() {
-	data, err := os.ReadFile("./configs/ssh.yaml")
+func (c *SshAllHost) LoadHostConf() {
+	data, err := os.ReadFile(c.confPath)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	var configs []SshHost
-	if err := yaml.Unmarshal(data, &configs); err != nil {
+	var arr SshHostArray
+	if err := yaml.Unmarshal(data, &arr); err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	for _, host := range configs {
-		if host, ok := h.sshHosts[host.Host]; ok {
+	for _, host := range arr.Hosts {
+		if host, ok := c.sshMapHosts[host.Host]; ok {
 			fmt.Printf("host: %s is exist in map, ignore.\n", host.Host)
 			continue
 		}
 		fmt.Printf("add host: %s to conf.\n", host.Host)
-		h.sshHosts[host.Host] = &host
+		c.sshMapHosts[host.Host] = &host
 	}
 
-	fmt.Printf("total cnt is %d\n", len(h.sshHosts))
+	fmt.Printf("total cnt is %d\n", len(c.sshMapHosts))
 }
 
-func (h *SshAllHost) GetIpConf(strIp string) (*SshHost, bool) {
-	host, ok := h.sshHosts[strIp]
+func (c *SshAllHost) GetIpConf(strIp string) (*SshHost, bool) {
+	host, ok := c.sshMapHosts[strIp]
 	return host, ok
 }

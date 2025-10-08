@@ -1,0 +1,29 @@
+hosts:
+- name: rocky
+  host: 192.168.1.180
+  port: 22
+  user: r
+  pass: r
+  private_key: /home/user/.ssh/id_rsa
+
+- name: dev-server
+  host: 192.168.1.20
+  port: 22
+  user: ubuntu
+  pass: r
+  private_key: /home/user/.ssh/id_rsa
+
+- name: neovim-server
+  host: 192.168.1.240
+  port: 22
+  user: u
+  pass: u
+  private_key: /home/user/.ssh/id_rsa
+
+- name: debian
+  host: 192.168.1.220
+  port: 22
+  user: d
+  pass: d
+  private_key: /home/user/.ssh/id_rsa
+

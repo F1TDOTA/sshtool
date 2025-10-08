@@ -43,11 +43,11 @@ func NewServer(ipAddr string, bindPort int) *Server {
 	// 初始配置服务
 	confObj := conf.NewSshConfig()
 	confObj.LoadHostConf()
-
+	
 	s := &Server{
 		ipAddr:   ipAddr,
 		bindPort: bindPort,
-		confObj:  &confObj,
+		confObj:  confObj,
 	}
 
 	// 初始化toast服务

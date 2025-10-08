@@ -1,3 +1,4 @@
+hosts:
 - name: rocky
   host: 192.168.1.180
   port: 22
@@ -9,6 +10,7 @@
   host: 192.168.1.20
   port: 22
   user: ubuntu
+  pass: r
   private_key: /home/user/.ssh/id_rsa
 
 - name: neovim-server
