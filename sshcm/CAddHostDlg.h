@@ -33,4 +33,5 @@ public:
 	BOOL m_bEditMode;
 	CString m_strOldName;
 	virtual BOOL OnInitDialog();
+	afx_msg void OnBtnClearKeyPath();
 };

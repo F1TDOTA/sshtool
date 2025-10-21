@@ -26,6 +26,7 @@
 #define IDC_SELECT_MONITOR_DIR          1007
 #define IDC_EDIT2                       1008
 #define IDC_EDIT_PORT                   1008
+#define IDC_EDIT_UPLOAD_PATH            1008
 #define IDC_EDIT_USER                   1009
 #define IDC_EDIT_PASS                   1010
 #define IDC_COMBO_SERVERS               1010
@@ -33,6 +34,7 @@
 #define IDC_BTN_START_SERVICE           1011
 #define IDC_EDIT_NAME                   1012
 #define IDC_BUTTON7                     1014
+#define IDC_BTN_CLEAR_MONITOR_DIR       1014
 #define IDC_EDIT_SEARCH                 1015
 #define IDC_BTN_CLEAR                   1017
 #define IDC_BTN_SAVE_MONITOR            1018
@@ -62,7 +64,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        133
+#define _APS_NEXT_RESOURCE_VALUE        136
 #define _APS_NEXT_COMMAND_VALUE         32791
 #define _APS_NEXT_CONTROL_VALUE         1020
 #define _APS_NEXT_SYMED_VALUE           101

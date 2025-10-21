@@ -165,11 +165,11 @@ void CsshcmDlg::LoadSshConfig(const CString& iniPath)
 	GetPrivateProfileString(_T("external_prog"), _T("xshell_conf_dir"), _T(""), buf, 512, iniPath);
 	m_externProg.xshellConfDir = buf;
 
+	GetPrivateProfileString(_T("external_prog"), _T("plink_path"), _T(""), buf, 512, iniPath);
+	m_externProg.plinkPath = buf;
+
 	GetPrivateProfileString(_T("external_prog"), _T("putty_path"), _T(""), buf, 512, iniPath);
 	m_externProg.puttyPath = buf;
-
-	GetPrivateProfileString(_T("external_prog"), _T("putty_conf_dir"), _T(""), buf, 512, iniPath);
-	m_externProg.puttyConfDir = buf;
 
 	GetPrivateProfileString(_T("external_prog"), _T("securecrt_path"), _T(""), buf, 512, iniPath);
 	m_externProg.secureCrtPath = buf;
@@ -235,6 +235,7 @@ CsshcmDlg::CsshcmDlg(CWnd* pParent /*=nullptr*/)
 	, m_strMonitorDir(_T(""))
 	, m_strSearch(_T(""))
 	, m_strProgName(_T("BuildRun.exe"))
+	, m_strUploadPath(_T(""))
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
@@ -247,6 +248,7 @@ void CsshcmDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Text(pDX, IDC_EDIT_SEARCH, m_strSearch);
 	DDX_Control(pDX, IDC_COMBO_SERVERS, m_comboServers);
 	DDX_Control(pDX, IDC_BTN_START_SERVICE, m_btnStartStop);
+	DDX_Text(pDX, IDC_EDIT_UPLOAD_PATH, m_strUploadPath);
 }
 
 BEGIN_MESSAGE_MAP(CsshcmDlg, CDialogEx)
@@ -268,6 +270,11 @@ BEGIN_MESSAGE_MAP(CsshcmDlg, CDialogEx)
 	ON_COMMAND(ID_OPEN_WINSCP, &CsshcmDlg::OnMenuOpenWinscp)
 	ON_COMMAND(ID_OPEN_XSHELL, &CsshcmDlg::OnMenuOpenXshell)
 	ON_MESSAGE(WM_GO_OUTPUT, &CsshcmDlg::OnGoOutput)
+	ON_COMMAND(ID_32785, &CsshcmDlg::OnMenuOpenPlink)
+	ON_COMMAND(ID_32786, &CsshcmDlg::OnMenuOpenSecureCrt)
+	ON_COMMAND(ID_32783, &CsshcmDlg::OnMenuOpenPutty)
+	ON_BN_CLICKED(IDC_BTN_CLEAR_MONITOR_DIR, &CsshcmDlg::OnBnClickedBtnClearMonitorDir)
+	ON_BN_CLICKED(IDC_BTN_SAVE_MONITOR, &CsshcmDlg::OnBnClickedBtnSaveMonitor)
 END_MESSAGE_MAP()
 
 
@@ -308,6 +315,9 @@ BOOL CsshcmDlg::OnInitDialog()
 
 	// 增加SSH服务器到下拉列表
 	LoadServerToCombo();
+
+	// 加载监控配置
+	LoadMonitorConf();
 
 	// 启动按钮
 	bool isExist = IsProcessRunningByName(m_strProgName);
@@ -489,7 +499,7 @@ void CsshcmDlg::LoadServerToCombo()
 	{
 		const SshHost& h = m_allHosts[i];
 		CString item;
-		item.Format(_T("%s (%s:%d)"), h.strName, h.strHost, h.iPort);
+		item.Format(_T("[%s]-[%s:%d]"), h.strName, h.strHost, h.iPort);
 
 		int idx = m_comboServers.AddString(item);
 		m_comboServers.SetItemData(idx, (DWORD_PTR)i); // 保存索引
@@ -623,6 +633,7 @@ void CsshcmDlg::OnBnClickedBtnAddSsh()
 
 		// 刷新列表
 		LoadIniToList();
+		LoadServerToCombo();
 	}
 }
 
@@ -724,6 +735,9 @@ void CsshcmDlg::OnMenuDeleteConf()
 			AfxMessageBox(err, MB_ICONERROR);
 		}
 	}
+
+	LoadIniToList();
+	LoadServerToCombo();
 }
 
 void CsshcmDlg::OnMenuRefresh()
@@ -834,7 +848,12 @@ void CsshcmDlg::OnMenuEdit()
 {
 	// TODO: 在此添加命令处理程序代码
 	POSITION pos = m_listHosts.GetFirstSelectedItemPosition();
-	if (!pos) return;
+	if (!pos)
+	{
+		AfxMessageBox(_T("请先选择需要编辑的项"), MB_ICONWARNING);
+		return;
+	}
+
 	int nItem = m_listHosts.GetNextSelectedItem(pos);
 
 	CString name = m_listHosts.GetItemText(nItem, 0);
@@ -844,18 +863,24 @@ void CsshcmDlg::OnMenuEdit()
 	CString pass = m_listHosts.GetItemText(nItem, 4);
 	CString key = m_listHosts.GetItemText(nItem, 5);
 
-	CAddHostDlg dlg;
-	dlg.m_bEditMode = TRUE;
-	dlg.m_strOldName = name;
-	dlg.m_strName = name;
-	dlg.m_strHost = host;
-	dlg.m_strPort = port;
-	dlg.m_strUser = user;
-	dlg.m_strPass = pass;
-	dlg.m_strKey = key;
 
-	if (dlg.DoModal() == IDOK)
+	while (true)
 	{
+		CAddHostDlg dlg;
+		dlg.m_bEditMode = TRUE;
+		dlg.m_strOldName = name;
+		dlg.m_strName = name;
+		dlg.m_strHost = host;
+		dlg.m_strPort = port;
+		dlg.m_strUser = user;
+		dlg.m_strPass = pass;
+		dlg.m_strKey = key;
+
+		if (dlg.DoModal() != IDOK)
+		{
+			break;
+		}
+
 		CString newName = dlg.m_strName.Trim();
 		CString newHost = dlg.m_strHost.Trim();
 		CString newPort = dlg.m_strPort.Trim();
@@ -865,7 +890,7 @@ void CsshcmDlg::OnMenuEdit()
 
 		if (ValidateHostConfig(newName, newHost, newPort, newUser) == FALSE)
 		{
-			return;
+			continue;
 		}
 
 		// 检查名称是否重复
@@ -874,7 +899,7 @@ void CsshcmDlg::OnMenuEdit()
 			CString msg;
 			msg.Format(_T("名称 [%s] 已存在，不能重复添加！"), newName);
 			AfxMessageBox(msg, MB_ICONWARNING);
-			return;
+			continue;
 		}
 
 		// 检查是否重复（host + port）
@@ -883,36 +908,40 @@ void CsshcmDlg::OnMenuEdit()
 			CString msg;
 			msg.Format(_T("主机 [%s:%s] 已存在，不能重复添加！"), newHost, newPort);
 			AfxMessageBox(msg, MB_ICONWARNING);
-			return;
+			continue;
 		}
 
+		// 删除旧section
 		if (newName.CompareNoCase(name) != 0)
-			WritePrivateProfileString(name, NULL, NULL, m_iniPath);  // 删除旧section
+		{
+			WritePrivateProfileString(name, NULL, NULL, m_iniPath);
+		}
 
-		// 拼接新字符串
+		// 保留原位置，替换旧名称为新名称
 		CString token;
 		int curPos = 0;
-		std::vector<CString> names;
+		CStringArray arr;
 
 		while (!(token = m_strHosts.Tokenize(_T(","), curPos)).IsEmpty())
 		{
 			token.Trim();
-			if (!token.IsEmpty() && token.CompareNoCase(name) != 0)
-			{
-				names.push_back(token);
-			}
+			if (token.IsEmpty())
+				continue;
+
+			if (token.CompareNoCase(name) == 0)
+				token = newName;   // 替换旧名称
+			arr.Add(token);
 		}
 
-		CString newHosts;
-		for (size_t i = 0; i < names.size(); ++i)
-		{
-			newHosts += names[i];
-			if (i + 1 < names.size())
-				newHosts += _T(", ");
-		}
-
+		// 重新拼接
 		CString newHostsString;
-		newHostsString.Format(_T("%s, %s"), newHosts, newName);
+		for (int i = 0; i < arr.GetSize(); ++i)
+		{
+			newHostsString += arr[i];
+			if (i + 1 < arr.GetSize())
+				newHostsString += _T(", ");
+		}
+
 		WritePrivateProfileString(_T("ssh"), _T("hosts"), newHostsString, m_iniPath);
 
 		WritePrivateProfileString(newName, _T("host"), newHost, m_iniPath);
@@ -921,6 +950,7 @@ void CsshcmDlg::OnMenuEdit()
 		WritePrivateProfileString(newName, _T("pass"), newPass, m_iniPath);
 		WritePrivateProfileString(newName, _T("private_key"), newKey, m_iniPath);
 
+		// 刷新列表
 		LoadIniToList();
 
 		// 自动高亮新项
@@ -934,7 +964,12 @@ void CsshcmDlg::OnMenuEdit()
 				break;
 			}
 		}
+
+		break;
 	}
+
+	// 重新加载列表
+	LoadServerToCombo();
 }
 
 void CsshcmDlg::OnMenuOpenXshell()
@@ -944,6 +979,13 @@ void CsshcmDlg::OnMenuOpenXshell()
 	if (strXshellPath.IsEmpty())
 	{
 		AfxMessageBox(_T("xshell 路径未设置，请先设置"), MB_ICONWARNING);
+		return;
+	}
+
+	CFileStatus status;
+	if (!CFile::GetStatus(strXshellPath, status))
+	{
+		AfxMessageBox(_T("xshell 文件不存在，请检查配置文件中的路径"));
 		return;
 	}
 
@@ -1243,6 +1285,13 @@ void CsshcmDlg::OnMenuOpenWinscp()
 		return;
 	}
 
+	CFileStatus status;
+	if (!CFile::GetStatus(strWinscpPath, status))
+	{
+		AfxMessageBox(_T("winscp 文件不存在，请检查配置文件中的路径"));
+		return;
+	}
+
 	POSITION pos = m_listHosts.GetFirstSelectedItemPosition();
 	if (!pos)
 	{
@@ -1277,4 +1326,291 @@ void CsshcmDlg::OnMenuOpenWinscp()
 		msg.Format(_T("启动winscp程序失败！错误码：%ld"), (INT_PTR)hRet);
 		AfxMessageBox(msg, MB_ICONERROR);
 	}
+}
+
+void CsshcmDlg::OnMenuOpenPlink()
+{
+	// TODO: 在此添加命令处理程序代码
+	CString strPlinkPath = m_externProg.plinkPath;
+	if (strPlinkPath.IsEmpty())
+	{
+		AfxMessageBox(_T("Plink 路径未设置，请先设置"), MB_ICONWARNING);
+		return;
+	}
+
+	CFileStatus status;
+	if (!CFile::GetStatus(strPlinkPath, status))
+	{
+		AfxMessageBox(_T("Plink 文件不存在，请检查配置文件中的路径"));
+		return;
+	}
+
+	POSITION pos = m_listHosts.GetFirstSelectedItemPosition();
+	if (!pos)
+	{
+		AfxMessageBox(_T("未选择项，请先选择"), MB_ICONWARNING);
+		return;
+	}
+	int nItem = m_listHosts.GetNextSelectedItem(pos);
+
+	CString name = m_listHosts.GetItemText(nItem, 0);
+	CString host = m_listHosts.GetItemText(nItem, 1);
+	CString port = m_listHosts.GetItemText(nItem, 2);
+	CString user = m_listHosts.GetItemText(nItem, 3);
+	CString pass = m_listHosts.GetItemText(nItem, 4);
+	CString key = m_listHosts.GetItemText(nItem, 5);
+
+	CString plinkCmd;
+	if (!pass.IsEmpty())
+		plinkCmd.Format(_T("\"%s\" -ssh -t -batch %s@%s -P %s -pw %s"), strPlinkPath, user, host, port, pass);
+	else
+		plinkCmd.Format(_T("\"%s\" -ssh -t %s@%s -P %s"), strPlinkPath, user, host, port);
+
+	CString params;
+	params.Format(_T("/k %s"), plinkCmd);
+
+	SHELLEXECUTEINFO sei = { 0 };
+	sei.cbSize = sizeof(sei);
+	sei.fMask = SEE_MASK_FLAG_NO_UI; // 遇到错误不弹出默认错误对话，可根据需改为 SEE_MASK_NOCLOSEPROCESS 等
+	sei.hwnd = NULL;
+	sei.lpVerb = _T("open");
+	sei.lpFile = _T("cmd.exe");
+	sei.lpParameters = params;
+	sei.nShow = SW_SHOWNORMAL;
+
+	if (!ShellExecuteEx(&sei))
+	{
+		DWORD err = GetLastError();
+		CString msg;
+		msg.Format(_T("启动Plink失败，错误码=%u"), err);
+		AfxMessageBox(msg);
+	}
+	else
+	{
+		// 如果需要等待程序结束（阻塞当前线程）
+		// WaitForSingleObject(sei.hProcess, INFINITE);
+
+		// 不管是否等待，都要 CloseHandle 防止句柄泄露
+		if (sei.hProcess)
+		{
+			CloseHandle(sei.hProcess);
+			sei.hProcess = NULL;
+		}
+	}
+
+}
+
+
+void CsshcmDlg::OnMenuOpenSecureCrt()
+{
+	// TODO: 在此添加命令处理程序代码
+	CString strSecureCrtPath = m_externProg.secureCrtPath;
+	if (strSecureCrtPath.IsEmpty())
+	{
+		AfxMessageBox(_T("SecureCrt 路径未设置，请先设置"), MB_ICONWARNING);
+		return;
+	}
+
+	CFileStatus status;
+	if (!CFile::GetStatus(strSecureCrtPath, status))
+	{
+		AfxMessageBox(_T("SecureCrt 文件不存在，请检查配置文件中的路径"));
+		return;
+	}
+
+	POSITION pos = m_listHosts.GetFirstSelectedItemPosition();
+	if (!pos)
+	{
+		AfxMessageBox(_T("未选择项，请先选择"), MB_ICONWARNING);
+		return;
+	}
+	int nItem = m_listHosts.GetNextSelectedItem(pos);
+
+	CString name = m_listHosts.GetItemText(nItem, 0);
+	CString host = m_listHosts.GetItemText(nItem, 1);
+	CString port = m_listHosts.GetItemText(nItem, 2);
+	CString user = m_listHosts.GetItemText(nItem, 3);
+	CString pass = m_listHosts.GetItemText(nItem, 4);
+	CString key = m_listHosts.GetItemText(nItem, 5);
+
+
+	CString params;
+	params.Format(L"/T /SSH2 /L %s /PASSWORD %s /P %s %s",
+		(LPCTSTR)user,
+		(LPCTSTR)pass,
+		(LPCTSTR)port,
+		(LPCTSTR)host);
+
+	// ShellExecuteEx 需要 lpFile=exePath, lpParameters=params
+	SHELLEXECUTEINFO sei = { 0 };
+	sei.cbSize = sizeof(sei);
+	sei.fMask = SEE_MASK_NOCLOSEPROCESS; // 若需要可以获取 hProcess
+	sei.hwnd = NULL;
+	sei.lpVerb = NULL; // "open"
+	sei.lpFile = strSecureCrtPath; // 可给完整路径
+	sei.lpParameters = params;
+	sei.nShow = SW_SHOWNORMAL;
+
+	if (!ShellExecuteEx(&sei))
+	{
+		DWORD err = GetLastError();
+		CString msg;
+		msg.Format(_T("启动SecureCrt失败，错误码=%u"), err);
+		AfxMessageBox(msg);
+	}
+	else
+	{
+		// 如果需要等待程序结束（阻塞当前线程）
+		// WaitForSingleObject(sei.hProcess, INFINITE);
+
+		// 不管是否等待，都要 CloseHandle 防止句柄泄露
+		if (sei.hProcess)
+		{
+			CloseHandle(sei.hProcess);
+			sei.hProcess = NULL;
+		}
+	}
+}
+
+void CsshcmDlg::OnMenuOpenPutty()
+{
+	// TODO: 在此添加命令处理程序代码
+	CString strPuttyPath = m_externProg.puttyPath;
+	if (strPuttyPath.IsEmpty())
+	{
+		AfxMessageBox(_T("Putty 路径未设置，请先设置"), MB_ICONWARNING);
+		return;
+	}
+
+	CFileStatus status;
+	if (!CFile::GetStatus(strPuttyPath, status))
+	{
+		AfxMessageBox(_T("Putty 文件不存在，请检查配置文件中的路径"));
+		return;
+	}
+
+	POSITION pos = m_listHosts.GetFirstSelectedItemPosition();
+	if (!pos)
+	{
+		AfxMessageBox(_T("未选择项，请先选择"), MB_ICONWARNING);
+		return;
+	}
+	int nItem = m_listHosts.GetNextSelectedItem(pos);
+
+	CString name = m_listHosts.GetItemText(nItem, 0);
+	CString host = m_listHosts.GetItemText(nItem, 1);
+	CString port = m_listHosts.GetItemText(nItem, 2);
+	CString user = m_listHosts.GetItemText(nItem, 3);
+	CString pass = m_listHosts.GetItemText(nItem, 4);
+	CString key = m_listHosts.GetItemText(nItem, 5);
+
+	// 拼装，执行
+	CString params;
+	if (!pass.IsEmpty())
+	{
+		params.Format(L"-ssh -l %s -pw %s -P %s %s",
+			(LPCTSTR)user,
+			(LPCTSTR)pass,
+			(LPCTSTR)port,
+			(LPCTSTR)host);
+	}
+	else
+	{
+		params.Format(L"-ssh -i \"%s\" -l %s -P %s %s",
+			(LPCTSTR)key,
+			(LPCTSTR)user,
+			(LPCTSTR)port,
+			(LPCTSTR)host);
+	}
+
+	// 调试显示参数
+	//AfxMessageBox(params);
+
+	SHELLEXECUTEINFO sei = { 0 };
+	sei.cbSize = sizeof(sei);
+	sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+	sei.hwnd = NULL;
+	sei.lpVerb = NULL;
+	sei.lpFile = strPuttyPath;     // PuTTY 可执行文件路径
+	sei.lpParameters = params;     // 拼好的参数
+	sei.nShow = SW_SHOWNORMAL;
+
+	if (!ShellExecuteEx(&sei))
+	{
+		DWORD err = GetLastError();
+		CString msg;
+		msg.Format(_T("启动PuTTY失败，错误码=%u"), err);
+		AfxMessageBox(msg);
+	}
+	else
+	{
+		if (sei.hProcess)
+		{
+			CloseHandle(sei.hProcess);
+			sei.hProcess = NULL;
+		}
+	}
+}
+
+
+
+void CsshcmDlg::OnBnClickedBtnClearMonitorDir()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	UpdateData(TRUE);
+	m_strMonitorDir = "";
+	UpdateData(FALSE);
+}
+
+void CsshcmDlg::OnBnClickedBtnSaveMonitor()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	UpdateData(TRUE);
+	CString strSshServerName = _T("");
+
+	int nSel = m_comboServers.GetCurSel();
+	if (nSel != CB_ERR)
+	{
+		m_comboServers.GetLBText(nSel, strSshServerName);
+	}
+
+	if (m_strMonitorDir.IsEmpty())
+	{
+		AfxMessageBox(_T("请先选择需要监控的文件目录"), MB_ICONWARNING);
+		return;
+	}
+
+	if (m_strUploadPath.IsEmpty())
+	{
+		AfxMessageBox(_T("上传的文件路径未输入，请先输入"), MB_ICONWARNING);
+		return;
+	}
+
+	CString strKey = _T("monitor");
+	WritePrivateProfileString(strKey, _T("monitor_dir"), m_strMonitorDir, m_iniPath);
+	WritePrivateProfileString(strKey, _T("upload_host"), strSshServerName, m_iniPath);
+	WritePrivateProfileString(strKey, _T("upload_path"), m_strUploadPath, m_iniPath);
+
+	AfxMessageBox(_T("配置保存成功，请重启服务"), MB_OK);
+}
+
+
+void CsshcmDlg::LoadMonitorConf()
+{
+	m_strMonitorDir = m_monitorConf.monitorDir;
+	m_strUploadPath = m_monitorConf.uploadPath;
+
+	CString target = m_monitorConf.uploadHost;
+	int index = m_comboServers.FindStringExact(-1, target);
+	if (index != CB_ERR)
+	{
+		m_comboServers.SetCurSel(index);
+	}
+	else
+	{
+		if (m_comboServers.GetCount() > 0)
+			m_comboServers.SetCurSel(0);
+	}
+
+	UpdateData(FALSE);
 }

@@ -5,7 +5,61 @@
 #include "sshcm.h"
 #include "afxdialogex.h"
 #include "CAddHostDlg.h"
+#include <afx.h>
+#include <wincrypt.h>
+#include <vector>
+#include <strsafe.h>
+#pragma comment(lib, "advapi32.lib")
 
+CString CalcMD5String(const CString& input)
+{
+	// 转为 UTF-8
+	int nBytes = WideCharToMultiByte(CP_UTF8, 0, input, -1, NULL, 0, NULL, NULL);
+	if (nBytes <= 1)
+		return _T("");
+
+	std::vector<char> utf8(nBytes - 1);
+	WideCharToMultiByte(CP_UTF8, 0, input, -1, utf8.data(), nBytes - 1, NULL, NULL);
+
+	// 初始化 CryptoAPI
+	HCRYPTPROV hProv = NULL;
+	HCRYPTHASH hHash = NULL;
+	BYTE rgbHash[16];
+	DWORD cbHash = 16;
+	TCHAR szHash[33] = { 0 };
+
+	if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT))
+		return _T("");
+
+	if (!CryptCreateHash(hProv, CALG_MD5, 0, 0, &hHash))
+	{
+		CryptReleaseContext(hProv, 0);
+		return _T("");
+	}
+
+	// 计算哈希
+	if (!CryptHashData(hHash, reinterpret_cast<BYTE*>(utf8.data()), (DWORD)utf8.size(), 0))
+	{
+		CryptDestroyHash(hHash);
+		CryptReleaseContext(hProv, 0);
+		return _T("");
+	}
+
+	if (CryptGetHashParam(hHash, HP_HASHVAL, rgbHash, &cbHash, 0))
+	{
+		for (DWORD i = 0; i < cbHash; i++)
+		{
+			CString tmp;
+			tmp.Format(_T("%02x"), rgbHash[i]);
+			_tcscat_s(szHash, tmp);
+		}
+	}
+
+	CryptDestroyHash(hHash);
+	CryptReleaseContext(hProv, 0);
+
+	return szHash;
+}
 
 // CAddHostDlg 对话框
 
@@ -45,6 +99,7 @@ void CAddHostDlg::DoDataExchange(CDataExchange* pDX)
 BEGIN_MESSAGE_MAP(CAddHostDlg, CDialogEx)
 	ON_BN_CLICKED(IDOK, &CAddHostDlg::OnBnClickedOk)
 	ON_BN_CLICKED(IDC_BUTTON_BROWSE, &CAddHostDlg::OnBnClickedButtonBrowse)
+	ON_BN_CLICKED(IDC_BUTTON2, &CAddHostDlg::OnBtnClearKeyPath)
 END_MESSAGE_MAP()
 
 
@@ -98,4 +153,20 @@ BOOL CAddHostDlg::OnInitDialog()
 
 	return TRUE;  // return TRUE unless you set the focus to a control
 	// 异常: OCX 属性页应返回 FALSE
+}
+
+void CAddHostDlg::OnBtnClearKeyPath()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	CString input = _T("556901-828924");
+	CString md5 = CalcMD5String(input);
+
+	CString msg;
+	msg.Format(_T("MD5(UTF8) = %s"), md5.GetString());
+	AfxMessageBox(msg);
+
+
+	UpdateData(TRUE);
+	m_strKey = "";
+	UpdateData(FALSE);
 }

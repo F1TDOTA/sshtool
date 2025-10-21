@@ -18,21 +18,23 @@ typedef struct
 
 typedef struct
 {
-	CString xshellPath;
-	CString xshellConfDir;
-	CString puttyPath;
-	CString puttyConfDir;
-	CString secureCrtPath;
-	CString secureCrtConfDir;
 	CString winscpPath;
-}ExternalProgConfig;
+
+	CString xshellPath;
+	CString secureCrtPath;
+	CString plinkPath;
+	CString puttyPath;
+
+	CString xshellConfDir;
+	CString secureCrtConfDir;
+} ExternalProgConfig;
 
 typedef struct
 {
 	CString monitorDir;
 	CString uploadHost;
 	CString uploadPath;
-}MonitorConfig;
+} MonitorConfig;
 
 // 自定义消息（确保不与其它消息冲突）
 #define WM_GO_OUTPUT (WM_APP + 100)
@@ -82,6 +84,7 @@ public:
 	afx_msg void OnBnClickedBtnAddSsh();
 	void LoadIniToList();
 	void LoadServerToCombo();
+	void LoadMonitorConf();
 	void LoadSshConfig(const CString& iniPath);
 	BOOL IsDuplicateHost(const CString& host, const CString& port, BOOL bEditMode, const CString& oldHost, const CString& oldPort);
 	BOOL IsDuplicateName(const CString& newName, const CString& excludeName = _T(""));
@@ -114,4 +117,11 @@ public:
 	BOOL StopGoProcess(DWORD waitMs /*= 5000*/);
 	CButton m_btnStartStop;
 	CString m_strProgName;
+	afx_msg void OnMenuOpenPlink();
+	afx_msg void OnMenuOpenSecureCrt();
+	afx_msg void OnMenuOpenPutty();
+	afx_msg void OnBtnClearKeyPath();
+	afx_msg void OnBnClickedBtnClearMonitorDir();
+	afx_msg void OnBnClickedBtnSaveMonitor();
+	CString m_strUploadPath;
 };
