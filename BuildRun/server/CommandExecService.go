@@ -10,14 +10,14 @@ import (
 type CommandExecService struct {
 	sessMgr  *session.SessMgr
 	toastSvr *ToastService
-	AppId    string
+	Title    string
 }
 
 func NewCommandExecService(toastSvr *ToastService) *CommandExecService {
 	return &CommandExecService{
 		sessMgr:  session.NewSessMgr(),
 		toastSvr: toastSvr,
-		AppId:    "命令执行助手",
+		Title:    "命令执行助手",
 	}
 }
 
@@ -54,7 +54,7 @@ func (s *CommandExecService) HandleCommand(confObj *conf.SshAllHost, cmdJson Jso
 
 	// 弹出提示信息
 	var jsonToast = &JsonToastCmd{
-		AppId:   s.AppId,
+		Title:   s.Title,
 		Message: fmt.Sprintf("命令 [%s] 执行成功\n", cmdExec),
 	}
 

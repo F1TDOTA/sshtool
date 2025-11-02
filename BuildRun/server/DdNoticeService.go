@@ -164,7 +164,7 @@ func (d *DdNoticeService) HandleCommand(cmdJson JsonCmd) {
 	//{"oper_action":"notify_dd","oper_type": "text", "warn_msg":"test message"}
 	msg := cmdJson.WarnMsg
 	operType := cmdJson.OperType
-	
+
 	// 发消息给自己
 	var jsonDing = &JsonDingCmd{
 		OperType: operType,
@@ -180,7 +180,7 @@ func (d *DdNoticeService) HandleCommand(cmdJson JsonCmd) {
 
 	// 发消息给Toast服务
 	var jsonToast = &JsonToastCmd{
-		AppId:   "钉钉告警",
+		Title:   "钉钉告警",
 		Message: msg,
 	}
 

@@ -14,7 +14,7 @@ type FileTransferService struct {
 	sessMgr  *session.SessMgr
 	tempPath string
 	toastSvr *ToastService
-	AppId    string
+	Title    string
 }
 
 func NewFileTransferService(toastSvr *ToastService) *FileTransferService {
@@ -22,7 +22,7 @@ func NewFileTransferService(toastSvr *ToastService) *FileTransferService {
 		sessMgr:  session.NewSessMgr(),
 		tempPath: "./buildrun.tmp",
 		toastSvr: toastSvr,
-		AppId:    "文件传输助手",
+		Title:    "文件传输助手",
 	}
 }
 
@@ -92,13 +92,50 @@ func (s *FileTransferService) handleFile(confObj *conf.SshAllHost, srcIp string,
 
 	// 弹出提示信息
 	var jsonToast = &JsonToastCmd{
-		AppId:   s.AppId,
+		Title:   s.Title,
 		Message: fmt.Sprintf("文件 [%s] 上传成功\nmd5: [%s]", dstPath, md5Val),
 	}
 
 	jsonStr, err := json.Marshal(jsonToast)
 	if err != nil {
 		return fmt.Errorf("jsonToast marshal err %s\n", err)
+	}
+	s.toastSvr.SendToastMsg(string(jsonStr))
+
+	return nil
+}
+
+func (s *FileTransferService) handleLocalFile(confObj *conf.SshAllHost, srcPath string, dstIp string, dstPath string) error {
+	// 目标机
+	dstHostConf, ok := confObj.GetIpConf(dstIp)
+	if ok != true {
+		return fmt.Errorf("handleLocalFile dstIp %s conf not exists\n", dstIp)
+	}
+
+	sessDst := s.sessMgr.GetOneSess(session.SessTypeSCP, dstHostConf, dstIp)
+	if sessDst == nil {
+		return fmt.Errorf("handleLocalFile dstIp: %s get session fail\n", dstIp)
+	}
+
+	// 上传文件
+	if scpSessDst, ok := sessDst.(*session.ScpSess); ok {
+		err := scpSessDst.UploadFileToRemote(srcPath, dstPath)
+		if err != nil {
+			return fmt.Errorf("upload local file: %s to remote: %s error: %s\n", srcPath, dstPath, err)
+		}
+	} else {
+		return fmt.Errorf("sessDst is not scp session: %T \n", sessDst)
+	}
+
+	// 弹出提示信息
+	var jsonToast = &JsonToastCmd{
+		Title:   s.Title,
+		Message: fmt.Sprintf("本地文件 [%s] 上传成功\n", dstPath),
+	}
+
+	jsonStr, err := json.Marshal(jsonToast)
+	if err != nil {
+		return fmt.Errorf("handleLocalFile jsonToast marshal err %s\n", err)
 	}
 	s.toastSvr.SendToastMsg(string(jsonStr))
 
@@ -112,7 +149,8 @@ func (s *FileTransferService) handleDir(dirPath string, dirRemotePath string) er
 func (s *FileTransferService) HandleCommand(conObj *conf.SshAllHost, cmdJson JsonCmd) error {
 
 	//命令格式如下：
-	//{"oper_action":"send_file","oper_type":"file","src_host":"192.168.1.240","src_path":"/home/u/test.cpp","dst_host":"192.168.1.180","dst_path":"/home/r/a.c"}
+	//远程文件：{"oper_action":"send_file","oper_type":"file","src_host":"192.168.1.240","src_path":"/home/u/test.cpp","dst_host":"192.168.1.180","dst_path":"/home/r/a.c"}
+	//本地文件：{"oper_action":"send_file","oper_type":"local_file","src_path":"c:/monitor/test.cpp","dst_host":"192.168.1.180","dst_path":"/home/r/test.cpp"}
 	operType := cmdJson.OperType
 	srcIp := cmdJson.SrcHost
 	srcPath := cmdJson.SrcPath
@@ -121,8 +159,8 @@ func (s *FileTransferService) HandleCommand(conObj *conf.SshAllHost, cmdJson Jso
 
 	if operType == "file" {
 		return s.handleFile(conObj, srcIp, srcPath, dstIp, dstPath)
-	} else if operType == "dir" {
-
+	} else if operType == "local_file" {
+		return s.handleLocalFile(conObj, srcPath, dstIp, dstPath)
 	}
 
 	return nil

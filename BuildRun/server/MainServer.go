@@ -27,27 +27,34 @@ type JsonResp struct {
 
 // ===============================主服务实现============================
 type Server struct {
-	ipAddr       string
-	bindPort     int
-	ln           net.Listener
-	confObj      *conf.SshAllHost
-	fileService  *FileTransferService
-	CmdService   *CommandExecService
-	ToastCh      chan string
-	ToastService *ToastService
-	DingCh       chan string
-	DingService  *DdNoticeService
+	ipAddr         string
+	bindPort       int
+	ln             net.Listener
+	sshConfObj     *conf.SshAllHost
+	monConfObj     *conf.MonitorConf
+	fileService    *FileTransferService
+	CmdService     *CommandExecService
+	ToastCh        chan string
+	ToastService   *ToastService
+	DingCh         chan string
+	DingService    *DdNoticeService
+	MonitorService *MonitorDirService
 }
 
 func NewServer(ipAddr string, bindPort int) *Server {
-	// 初始配置服务
-	confObj := conf.NewSshConfig()
-	confObj.LoadHostConf()
-	
+	// 初始SSH配置
+	sshConfObj := conf.NewSshConfig()
+	sshConfObj.LoadHostConf()
+
+	// 初始化监控配置
+	monConfObj := conf.NewMonitorConf()
+	monConfObj.LoadMonitorConf()
+
 	s := &Server{
-		ipAddr:   ipAddr,
-		bindPort: bindPort,
-		confObj:  confObj,
+		ipAddr:     ipAddr,
+		bindPort:   bindPort,
+		sshConfObj: sshConfObj,
+		monConfObj: monConfObj,
 	}
 
 	// 初始化toast服务
@@ -64,6 +71,10 @@ func NewServer(ipAddr string, bindPort int) *Server {
 
 	// 初始化ssh会话
 	s.CmdService = NewCommandExecService(s.ToastService)
+
+	// 初始化监控服务
+	s.MonitorService = NewMonitorDirService(s.sshConfObj, s.monConfObj, s.fileService)
+	go s.MonitorService.Run()
 
 	return s
 }
@@ -122,10 +133,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 	cmd := cmdJson.OperAction
 	switch cmd {
 	case "send_file":
-		err = s.fileService.HandleCommand(s.confObj, cmdJson)
+		err = s.fileService.HandleCommand(s.sshConfObj, cmdJson)
 		break
 	case "exec_cmd":
-		err = s.CmdService.HandleCommand(s.confObj, cmdJson)
+		err = s.CmdService.HandleCommand(s.sshConfObj, cmdJson)
 		break
 	case "print_scp_session":
 		s.fileService.PrintAllSess()

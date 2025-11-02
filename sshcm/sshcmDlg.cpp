@@ -21,52 +21,6 @@
 #define new DEBUG_NEW
 #endif
 
-std::vector<DWORD> GetPidsByProcessName(LPCTSTR exeName)
-{
-	std::vector<DWORD> pids;
-	HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (hSnap == INVALID_HANDLE_VALUE) return pids;
-
-	PROCESSENTRY32 pe;
-	pe.dwSize = sizeof(pe);
-	if (Process32First(hSnap, &pe))
-	{
-		do {
-			if (_tcsicmp(pe.szExeFile, exeName) == 0)
-			{
-				pids.push_back(pe.th32ProcessID);
-			}
-		} while (Process32Next(hSnap, &pe));
-	}
-	CloseHandle(hSnap);
-	return pids;
-}
-
-bool IsProcessRunningByName(LPCTSTR exeName)
-{
-	auto p = GetPidsByProcessName(exeName);
-	return !p.empty();
-}
-
-bool KillProcessesByName(LPCTSTR exeName)
-{
-	auto pids = GetPidsByProcessName(exeName);
-	bool okAll = true;
-	for (DWORD pid : pids)
-	{
-		HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-		if (h)
-		{
-			if (!TerminateProcess(h, 1))
-				okAll = false;
-			CloseHandle(h);
-		}
-		else
-			okAll = false;
-	}
-	return okAll;
-}
-
 CString GetAppDirectory(bool bExeDir = false)
 {
 	if (bExeDir)
@@ -249,6 +203,7 @@ void CsshcmDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_COMBO_SERVERS, m_comboServers);
 	DDX_Control(pDX, IDC_BTN_START_SERVICE, m_btnStartStop);
 	DDX_Text(pDX, IDC_EDIT_UPLOAD_PATH, m_strUploadPath);
+	DDX_Control(pDX, IDC_EDIT_LOG, m_editLog);
 }
 
 BEGIN_MESSAGE_MAP(CsshcmDlg, CDialogEx)
@@ -269,12 +224,12 @@ BEGIN_MESSAGE_MAP(CsshcmDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BTN_START_SERVICE, &CsshcmDlg::OnBnClickedBtnStartService)
 	ON_COMMAND(ID_OPEN_WINSCP, &CsshcmDlg::OnMenuOpenWinscp)
 	ON_COMMAND(ID_OPEN_XSHELL, &CsshcmDlg::OnMenuOpenXshell)
-	ON_MESSAGE(WM_GO_OUTPUT, &CsshcmDlg::OnGoOutput)
 	ON_COMMAND(ID_32785, &CsshcmDlg::OnMenuOpenPlink)
 	ON_COMMAND(ID_32786, &CsshcmDlg::OnMenuOpenSecureCrt)
 	ON_COMMAND(ID_32783, &CsshcmDlg::OnMenuOpenPutty)
 	ON_BN_CLICKED(IDC_BTN_CLEAR_MONITOR_DIR, &CsshcmDlg::OnBnClickedBtnClearMonitorDir)
 	ON_BN_CLICKED(IDC_BTN_SAVE_MONITOR, &CsshcmDlg::OnBnClickedBtnSaveMonitor)
+	ON_BN_CLICKED(IDC_BTN_REFRESH_MONITOR, &CsshcmDlg::OnBnClickedBtnRefreshMonitor)
 END_MESSAGE_MAP()
 
 
@@ -319,16 +274,9 @@ BOOL CsshcmDlg::OnInitDialog()
 	// 加载监控配置
 	LoadMonitorConf();
 
-	// 启动按钮
-	bool isExist = IsProcessRunningByName(m_strProgName);
-	if (isExist)
-	{
-		m_btnStartStop.SetWindowText(_T("停止"));
-	}
-	else
-	{
-		m_btnStartStop.SetWindowText(_T("启动"));
-	}
+	// 日志框初始化
+	m_editLog.SubclassDlgItem(IDC_EDIT_LOG, this);
+	m_editLog.SetLimitText(0);
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -1025,222 +973,180 @@ void CsshcmDlg::OnMenuOpenXshell()
 	}
 }
 
-BOOL CsshcmDlg::StartGoProcessWithOutputAsync(LPCTSTR exePath, LPCTSTR args)
+void CsshcmDlg::AppendLog(const CString& text)
 {
-	if (m_pWorkerThread) {
-		AfxMessageBox(_T("已有任务在运行"));
-		return FALSE;
-	}
+	if (!::IsWindow(m_editLog.m_hWnd))
+		return;
 
-	SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
-	HANDLE hRead = NULL, hWrite = NULL;
-	if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
-		AfxMessageBox(_T("CreatePipe failed"));
-		return FALSE;
-	}
-	// 主线程的副本（用于 CancelIoEx / CloseHandle 在 Stop 中）
-	m_hReadPipe = hRead;
-	// 线程要用的一份副本（线程结束时它会 Close）
-	HANDLE hReadThread = NULL;
-	if (!DuplicateHandle(GetCurrentProcess(), hRead, GetCurrentProcess(),
-		&hReadThread, 0, TRUE, DUPLICATE_SAME_ACCESS)) {
-		// 如果 duplicate 失败，退而使用原句柄（但这会导致主/子争用）
-		hReadThread = hRead;
-	}
+	// 1. 获取当前时间戳
+	SYSTEMTIME st;
+	GetLocalTime(&st);
+	CString timeStr;
+	timeStr.Format(_T("[%02d:%02d:%02d.%03d] "),
+		st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 
-	// 设置子进程 STARTUPINFO 使 stdout/stderr 指向写端
-	STARTUPINFO si = {}; si.cb = sizeof(si);
-	si.dwFlags |= STARTF_USESTDHANDLES;
-	si.hStdOutput = hWrite;
-	si.hStdError = hWrite;
-	si.wShowWindow = SW_HIDE;
+	// 2. 格式化换行
+	CString formatted = text;
+	formatted.Replace(_T("\r\n"), _T("\n"));
+	formatted.Replace(_T("\n"), _T("\r\n"));
+	if (formatted.Right(2) != _T("\r\n"))
+		formatted += _T("\r\n");
 
-	PROCESS_INFORMATION* pPi = new PROCESS_INFORMATION();
-	ZeroMemory(pPi, sizeof(*pPi));
-	CString cmd;
-	if (args && _tcslen(args) > 0) cmd.Format(_T("\"%s\" %s"), exePath, args);
-	else cmd.Format(_T("\"%s\""), exePath);
+	formatted = timeStr + formatted;
 
-	BOOL ok = CreateProcess(NULL, cmd.GetBuffer(), NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, pPi);
-	cmd.ReleaseBuffer();
+	// 3. 获取旧内容并将新日志插在最前面
+	CString oldText;
+	m_editLog.GetWindowText(oldText);
+	CString newContent = formatted + oldText;
 
-	// 父进程关闭写端（子进程继承写端）
-	CloseHandle(hWrite);
+	// 4. 更新控件内容并滚动到顶部
+	m_editLog.SetRedraw(FALSE);
+	m_editLog.SetWindowText(newContent);
+	m_editLog.SetRedraw(TRUE);
+	m_editLog.LineScroll(0);
+	m_editLog.Invalidate(FALSE);
+	m_editLog.UpdateWindow();
 
-	if (!ok) {
-		DWORD err = GetLastError();
-		CString msg; msg.Format(_T("CreateProcess failed %u"), err);
-		AfxMessageBox(msg);
-		// 清理
-		if (hReadThread != hRead) CloseHandle(hReadThread);
-		CloseHandle(hRead);
-		delete pPi;
-		return FALSE;
-	}
+}
 
-	// Duplicate 子进程句柄保存给主线程，以便必要时 TerminateProcess
-	if (!DuplicateHandle(GetCurrentProcess(), pPi->hProcess, GetCurrentProcess(), &m_hProcessDup, 0, TRUE, DUPLICATE_SAME_ACCESS)) {
-		m_hProcessDup = NULL;
-	}
+void CsshcmDlg::KillProcessByName(const CString& exeName)
+{
+	AppendLog(_T("开始杀老进程...\r\n"));
 
-	// 准备线程参数（线程拥有 hReadThread 并在退出时关闭它）
-	struct ThreadParam { HANDLE hRead; PROCESS_INFORMATION* pPi; HWND hReceiver; };
-	ThreadParam* tp = new ThreadParam{ hReadThread, pPi, this->GetSafeHwnd() };
+	// 通知读取线程停止
+	m_bStop = true;
 
-	CWinThread* pThread = AfxBeginThread(
-		[](LPVOID lpParam)->UINT {
-			ThreadParam* param = reinterpret_cast<ThreadParam*>(lpParam);
-			HANDLE hReadLocal = param->hRead;
-			PROCESS_INFORMATION* pPiLocal = param->pPi;
-			HWND hWnd = param->hReceiver;
+	// 关闭管道，让线程自然退出
+	if (m_hOutRd) { CloseHandle(m_hOutRd); m_hOutRd = NULL; }
+	if (m_hErrRd) { CloseHandle(m_hErrRd); m_hErrRd = NULL; }
 
-			const DWORD BUF_SZ = 4096;
-			std::vector<char> buf(BUF_SZ);
-			DWORD bytes = 0;
-			std::string accum;
+	// 不再等待线程，也不关心 m_pReadThread 是否还在
+	m_pReadThread = nullptr;
 
-			// 阻塞读取；如果主线程调用 CancelIoEx on主副本，ReadFile 将返回 FALSE 且 GetLastError()==ERROR_OPERATION_ABORTED
-			while (true) {
-				BOOL r = ReadFile(hReadLocal, buf.data(), (DWORD)buf.size() - 1, &bytes, NULL);
-				if (!r) {
-					DWORD err = GetLastError();
-					if (err == ERROR_OPERATION_ABORTED) {
-						// 读被取消：线程应退出循环
-						break;
-					}
-					// 其他错误或管道关闭: 退出
-					break;
+	// 杀掉旧进程
+	HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (hSnap == INVALID_HANDLE_VALUE)
+		return;
+
+	PROCESSENTRY32 pe{ sizeof(PROCESSENTRY32) };
+	if (Process32First(hSnap, &pe))
+	{
+		do
+		{
+			if (_tcsicmp(pe.szExeFile, exeName) == 0)
+			{
+				HANDLE hProc = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+				if (hProc)
+				{
+					TerminateProcess(hProc, 0);
+					CloseHandle(hProc);
+					AppendLog(_T("杀掉进程成功: ") + exeName + _T("\r\n"));
 				}
-				if (bytes == 0) break;
-				accum.append(buf.data(), bytes);
-
-				// （可选）每块回传：这里示例不分块，读完一次性回传
 			}
-
-			// 等待子进程结束并获取退出码
-			WaitForSingleObject(pPiLocal->hProcess, INFINITE);
-			DWORD exitCode = STILL_ACTIVE;
-			GetExitCodeProcess(pPiLocal->hProcess, &exitCode);
-
-			// 把结果封装并 PostMessage 回主线程（主线程负责 delete）
-			GoOutputMsg* pMsg = new GoOutputMsg();
-			pMsg->output = std::move(accum);
-			pMsg->exitCode = exitCode;
-			::PostMessage(hWnd, WM_GO_OUTPUT, (WPARAM)pMsg, 0);
-
-			// 线程清理：关闭自己的读端副本、关闭子进程句柄/线程句柄、释放 param
-			if (hReadLocal) CloseHandle(hReadLocal);
-			CloseHandle(pPiLocal->hProcess);
-			CloseHandle(pPiLocal->hThread);
-			delete pPiLocal;
-			delete param;
-			return 0;
-		}, tp);
-
-	if (!pThread) {
-		// 线程创建失败：清理
-		if (m_hProcessDup) { CloseHandle(m_hProcessDup); m_hProcessDup = NULL; }
-		// child process still running — decide how to handle; for now, terminate
-		TerminateProcess(pPi->hProcess, 1);
-		CloseHandle(pPi->hProcess); CloseHandle(pPi->hThread);
-		delete pPi;
-		if (hReadThread && hReadThread != hRead) CloseHandle(hReadThread);
-		CloseHandle(hRead);
-		return FALSE;
+		} while (Process32Next(hSnap, &pe));
 	}
 
-	// 保存线程指针；主线程用 m_hReadPipe (hRead) 来 CancelIoEx/Close
-	m_pWorkerThread = pThread;
-	return TRUE;
+	CloseHandle(hSnap);
 }
 
-BOOL CsshcmDlg::StopGoProcess(DWORD waitMs /*= 5000*/)
+void CsshcmDlg::StartProcessAndCapture(const CString& exePath)
 {
-	// 如果根本没有在运行
-	if (!m_pWorkerThread && !m_hProcessDup && !m_hReadPipe)
-		return TRUE;
+	SECURITY_ATTRIBUTES sa{ sizeof(sa), NULL, TRUE };
+	HANDLE hOutRd = NULL, hOutWr = NULL;
+	HANDLE hErrRd = NULL, hErrWr = NULL;
 
-	// 1) 先取消阻塞的 ReadFile（用主线程持有的句柄副本）
-	if (m_hReadPipe)
+	CreatePipe(&hOutRd, &hOutWr, &sa, 0);
+	SetHandleInformation(hOutRd, HANDLE_FLAG_INHERIT, 0);
+	CreatePipe(&hErrRd, &hErrWr, &sa, 0);
+	SetHandleInformation(hErrRd, HANDLE_FLAG_INHERIT, 0);
+
+	STARTUPINFO si{};
+	PROCESS_INFORMATION pi{};
+	si.cb = sizeof(si);
+	si.dwFlags |= STARTF_USESTDHANDLES;
+	si.hStdOutput = hOutWr;
+	si.hStdError = hErrWr;
+	si.hStdInput = NULL;
+
+	AppendLog(_T("启动服务...\r\n"));
+	if (!CreateProcess(NULL, (LPTSTR)(LPCTSTR)exePath,
+		NULL, NULL, TRUE, CREATE_NO_WINDOW,
+		NULL, NULL, &si, &pi))
 	{
-		typedef BOOL(WINAPI* PFNCancelIoEx)(HANDLE, LPOVERLAPPED);
-		HMODULE hKernel = GetModuleHandle(L"Kernel32");
-		PFNCancelIoEx pCancelIoEx = (PFNCancelIoEx)GetProcAddress(hKernel, "CancelIoEx");
-		if (pCancelIoEx) pCancelIoEx(m_hReadPipe, NULL);
-		else CancelIo(m_hReadPipe);
+		AppendLog(_T("启动服务失败.\r\n"));
+		return;
 	}
 
-	// 2) 等待线程退出（线程会关闭它自己的 hRead 副本）
-	if (m_pWorkerThread)
-	{
-		DWORD wait = WaitForSingleObject(m_pWorkerThread->m_hThread, waitMs);
-		if (wait == WAIT_TIMEOUT)
+	CloseHandle(hOutWr);
+	CloseHandle(hErrWr);
+
+	m_hProcess = pi.hProcess;
+	m_hOutRd = hOutRd;
+	m_hErrRd = hErrRd;
+	m_bStop = false;
+
+	// 启动日志读取线程
+	m_pReadThread = AfxBeginThread([](LPVOID pParam)->UINT {
+		CsshcmDlg* dlg = (CsshcmDlg*)pParam;
+		char buf[1024];
+		DWORD dwRead;
+		CString line;
+
+		while (!dlg->m_bStop)
 		{
-			// 线程仍未退出，尝试强杀子进程（如果有 dup 的进程句柄）
-			if (m_hProcessDup) {
-				TerminateProcess(m_hProcessDup, 1);
-				// 再等一会儿
-				WaitForSingleObject(m_pWorkerThread->m_hThread, 3000);
+			DWORD avail = 0;
+			if (!PeekNamedPipe(dlg->m_hOutRd, NULL, 0, NULL, &avail, NULL))
+				break;
+
+			if (avail > 0)
+			{
+				if (ReadFile(dlg->m_hOutRd, buf, sizeof(buf) - 1, &dwRead, NULL) && dwRead > 0)
+				{
+					buf[dwRead] = '\0';
+
+					// --- UTF-8 → Unicode 转换 ---
+					int wlen = MultiByteToWideChar(CP_UTF8, 0, buf, -1, NULL, 0);
+					CStringW wstr;
+					LPWSTR pwstr = wstr.GetBuffer(wlen);
+					MultiByteToWideChar(CP_UTF8, 0, buf, -1, pwstr, wlen);
+					wstr.ReleaseBuffer();
+
+					dlg->AppendLog(CString(wstr));
+				}
 			}
+
+			if (!PeekNamedPipe(dlg->m_hErrRd, NULL, 0, NULL, &avail, NULL))
+				break;
+
+			if (avail > 0)
+			{
+				if (ReadFile(dlg->m_hErrRd, buf, sizeof(buf) - 1, &dwRead, NULL) && dwRead > 0)
+				{
+					buf[dwRead] = '\0';
+
+					int wlen = MultiByteToWideChar(CP_UTF8, 0, buf, -1, NULL, 0);
+					CStringW wstr;
+					LPWSTR pwstr = wstr.GetBuffer(wlen);
+					MultiByteToWideChar(CP_UTF8, 0, buf, -1, pwstr, wlen);
+					wstr.ReleaseBuffer();
+
+					dlg->AppendLog(_T("[ERR] ") + CString(wstr));
+				}
+			}
+
+			DWORD code = STILL_ACTIVE;
+			if (dlg->m_hProcess)
+			{
+				GetExitCodeProcess(dlg->m_hProcess, &code);
+				if (code != STILL_ACTIVE)
+					break;
+			}
+			Sleep(100);
 		}
-		// 线程已退出或我们强杀后它也会退出
-		m_pWorkerThread = nullptr;
-	}
 
-	// 3) 现在线程已经结束（保证线程不再使用句柄），主线程再关闭自己持有的读端
-	if (m_hReadPipe) {
-		CloseHandle(m_hReadPipe);
-		m_hReadPipe = NULL;
-	}
-
-	// 4) 关闭我们持有的 process dup handle（若存在）
-	if (m_hProcessDup) {
-		CloseHandle(m_hProcessDup);
-		m_hProcessDup = NULL;
-	}
-
-	return TRUE;
-}
-
-LRESULT CsshcmDlg::OnGoOutput(WPARAM wParam, LPARAM lParam)
-{
-	GoOutputMsg* p = reinterpret_cast<GoOutputMsg*>(wParam);
-	if (p)
-	{
-		// output 是 ANSI bytes（通常子进程以 UTF-8 或系统 OEM 编码输出）
-		// 若你的 Go 程序输出 UTF-8，需把 UTF-8 -> UTF-16 转换
-		// 这里示例把 ANSI 直接转成 CString（若你用 Unicode，请注意编码）
-#ifdef UNICODE
-		// 假设子进程输出为 UTF-8，做转换到宽字符
-		int required = MultiByteToWideChar(CP_UTF8, 0, p->output.c_str(), (int)p->output.size(), NULL, 0);
-		CString outW;
-		if (required > 0)
-		{
-			outW.GetBuffer(required);
-			MultiByteToWideChar(CP_UTF8, 0, p->output.c_str(), (int)p->output.size(), outW.GetBuffer(), required);
-			outW.ReleaseBuffer(required);
-		}
-		else
-		{
-			outW = _T("");
-		}
-#else
-		// ANSI build
-		CString outW(p->output.c_str());
-#endif
-
-		// 在 UI 中显示 / 追加到编辑框 / 日志文件等
-		// 例如：追加到一个多行编辑控件 m_editLog
-		// m_editLog.AppendText(outW); // 伪代码，实际请使用 SetSel/ReplaceSel 等
-
-		CString msg;
-		msg.Format(_T("Go 程序已结束，退出码=%u"), p->exitCode);
-		TRACE(_T("%s\n"), msg);
-
-		// 释放堆内存
-		delete p;
-	}
-	return 0;
+		dlg->AppendLog(_T("日志读取线程失败.\r\n"));
+		return 0;
+	}, this);
 }
 
 void CsshcmDlg::OnBnClickedBtnStartService()
@@ -1249,30 +1155,15 @@ void CsshcmDlg::OnBnClickedBtnStartService()
 	CString strExePath = GetAppDirectory(true);
 	CString goExePath;
 	goExePath.Format(_T("%s\\%s"), strExePath, m_strProgName);
-	bool isExist = false;
 
-	isExist = IsProcessRunningByName(m_strProgName);
-	if (isExist)
-	{
-		StopGoProcess(5000);
-		KillProcessesByName(m_strProgName);
-	}
-	else
-	{
-		StartGoProcessWithOutputAsync(goExePath, NULL);
-	}
-
-	Sleep(1);
-	// 检查按钮状态
-	isExist = IsProcessRunningByName(m_strProgName);
-	if (isExist)
-	{
-		m_btnStartStop.SetWindowText(_T("停止"));
-	}
-	else
-	{
-		m_btnStartStop.SetWindowText(_T("启动"));
-	}
+	m_editLog.SetSel(0, -1);      // 选中全部
+	m_editLog.ReplaceSel(_T("")); // 用空字符串替换
+	m_editLog.LineScroll(0);      // 滚动回顶部
+	AppendLog(_T("重新启动服务...\r\n"));
+	
+	KillProcessByName(m_strProgName);
+	Sleep(200);
+	StartProcessAndCapture(goExePath);
 }
 
 void CsshcmDlg::OnMenuOpenWinscp()
@@ -1613,4 +1504,13 @@ void CsshcmDlg::LoadMonitorConf()
 	}
 
 	UpdateData(FALSE);
+}
+
+
+
+void CsshcmDlg::OnBnClickedBtnRefreshMonitor()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	LoadIniToList();
+	LoadMonitorConf();
 }

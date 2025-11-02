@@ -209,6 +209,8 @@
     <None Include="res\sshcm.rc2" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="C:\Users\Admin\Desktop\0633d8bf-0ad2-472e-be40-f416dc039de2.png" />
+    <Image Include="res\icon1.ico" />
     <Image Include="res\sshcm.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

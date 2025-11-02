@@ -8,7 +8,7 @@ import (
 )
 
 type JsonToastCmd struct {
-	AppId   string `json:"app_id"`
+	Title   string `json:"title"`
 	Message string `json:"message"`
 }
 
@@ -32,7 +32,8 @@ func (t *ToastService) Execute(msg string) {
 	}
 
 	notification := toast.Notification{
-		AppID:   jsonToastObj.AppId,
+		AppID:   "ssh统一管理工具",
+		Title:   jsonToastObj.Title,
 		Message: jsonToastObj.Message,
 	}
 
@@ -60,7 +61,7 @@ func (t *ToastService) HandleCommand(cmdJson JsonCmd) {
 	msg := cmdJson.WarnMsg
 
 	var jsonToast = &JsonToastCmd{
-		AppId:   "自定义告警",
+		Title:   "自定义告警",
 		Message: msg,
 	}
 

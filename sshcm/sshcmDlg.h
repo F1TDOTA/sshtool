@@ -74,11 +74,6 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 
-protected:
-	CWinThread* m_pWorkerThread = nullptr; // 指向读取线程的 CWinThread
-	HANDLE      m_hReadPipe = NULL;        // 读取端句柄（由 Start 保存）
-	HANDLE      m_hProcessDup = NULL;      // 子进程的 DUP 句柄（用来 Stop/Terminate）
-
 public:
 	afx_msg void OnLvnItemchangedSshList(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnBnClickedBtnAddSsh();
@@ -112,9 +107,6 @@ public:
 	afx_msg void OnBnClickedBtnStartService();
 	afx_msg void OnMenuOpenWinscp();
 	afx_msg void OnMenuOpenXshell();
-	afx_msg LRESULT OnGoOutput(WPARAM wParam, LPARAM lParam);
-	BOOL StartGoProcessWithOutputAsync(LPCTSTR exePath, LPCTSTR args);
-	BOOL StopGoProcess(DWORD waitMs /*= 5000*/);
 	CButton m_btnStartStop;
 	CString m_strProgName;
 	afx_msg void OnMenuOpenPlink();
@@ -124,4 +116,14 @@ public:
 	afx_msg void OnBnClickedBtnClearMonitorDir();
 	afx_msg void OnBnClickedBtnSaveMonitor();
 	CString m_strUploadPath;
+	afx_msg void OnBnClickedBtnRefreshMonitor();
+	CEdit m_editLog;
+	void AppendLog(const CString& text);
+	void KillProcessByName(const CString& exeName);
+	void StartProcessAndCapture(const CString& exePath);
+	HANDLE m_hProcess = nullptr;
+	HANDLE m_hOutRd = nullptr;
+	HANDLE m_hErrRd = nullptr;
+	CWinThread* m_pReadThread = nullptr;
+	volatile bool m_bStop = false;
 };
