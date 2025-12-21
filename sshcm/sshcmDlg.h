@@ -126,4 +126,8 @@ public:
 	HANDLE m_hErrRd = nullptr;
 	CWinThread* m_pReadThread = nullptr;
 	volatile bool m_bStop = false;
+	afx_msg void OnNMClickSshList(NMHDR* pNMHDR, LRESULT* pResult);
+	void CopyToClipboard(const CString& text);
+	CStatic m_sshTotalText;
+	afx_msg void OnStnClickedStaticTotal();
 };

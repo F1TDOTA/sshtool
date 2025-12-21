@@ -204,6 +204,7 @@ void CsshcmDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_BTN_START_SERVICE, m_btnStartStop);
 	DDX_Text(pDX, IDC_EDIT_UPLOAD_PATH, m_strUploadPath);
 	DDX_Control(pDX, IDC_EDIT_LOG, m_editLog);
+	DDX_Control(pDX, IDC_STATIC_TOTAL, m_sshTotalText);
 }
 
 BEGIN_MESSAGE_MAP(CsshcmDlg, CDialogEx)
@@ -230,6 +231,8 @@ BEGIN_MESSAGE_MAP(CsshcmDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BTN_CLEAR_MONITOR_DIR, &CsshcmDlg::OnBnClickedBtnClearMonitorDir)
 	ON_BN_CLICKED(IDC_BTN_SAVE_MONITOR, &CsshcmDlg::OnBnClickedBtnSaveMonitor)
 	ON_BN_CLICKED(IDC_BTN_REFRESH_MONITOR, &CsshcmDlg::OnBnClickedBtnRefreshMonitor)
+	ON_NOTIFY(NM_CLICK, IDC_SSH_LIST, &CsshcmDlg::OnNMClickSshList)
+	ON_STN_CLICKED(IDC_STATIC_TOTAL, &CsshcmDlg::OnStnClickedStaticTotal)
 END_MESSAGE_MAP()
 
 
@@ -359,7 +362,7 @@ void CsshcmDlg::AutoAdjustColumnWidth()
 
 	// ✅ 定义每列宽度百分比（总和 = 100）
 	// 顺序对应：名称, 主机, 端口, 用户名, 密码, 私钥路径
-	const double colPercents[] = { 0.15, 0.15, 0.10, 0.15, 0.15, 0.30 };
+	const double colPercents[] = { 0.15, 0.15, 0.10, 0.15, 0.20, 0.25 };
 	const int nDefinedCols = sizeof(colPercents) / sizeof(colPercents[0]);
 
 	if (nColumnCount != nDefinedCols)
@@ -442,6 +445,7 @@ void CsshcmDlg::FillDataToGrid()
 void CsshcmDlg::LoadServerToCombo()
 {
 	m_comboServers.ResetContent();
+	m_comboServers.AddString(_T("请选择"));
 
 	for (int i = 0; i < (int)m_allHosts.size(); ++i)
 	{
@@ -450,12 +454,10 @@ void CsshcmDlg::LoadServerToCombo()
 		item.Format(_T("[%s]-[%s:%d]"), h.strName, h.strHost, h.iPort);
 
 		int idx = m_comboServers.AddString(item);
-		m_comboServers.SetItemData(idx, (DWORD_PTR)i); // 保存索引
+		m_comboServers.SetItemData(idx, (DWORD_PTR)(i+1)); // 保存索引
 	}
 
-	// 选中第一个（可选）
-	if (m_allHosts.size() > 0)
-		m_comboServers.SetCurSel(0);
+	m_comboServers.SetCurSel(0);
 }
 
 
@@ -482,12 +484,13 @@ void CsshcmDlg::LoadIniToList()
 
 	// 填充数据
 	FillDataToGrid();
-	AutoAdjustColumnWidth(); 
+	AutoAdjustColumnWidth();
 
 	CString msg;
-	msg.Format(_T("已加载 %d 条主机配置。\n"), (int)m_allHosts.size());
-	OutputDebugString(msg);
+	msg.Format(_T("总计：%d条"), (int)m_allHosts.size());
+	m_sshTotalText.SetWindowText(msg);
 }
+
 
 BOOL CsshcmDlg::IsDuplicateName(const CString& newName, const CString& excludeName)
 {
@@ -1152,6 +1155,19 @@ void CsshcmDlg::StartProcessAndCapture(const CString& exePath)
 void CsshcmDlg::OnBnClickedBtnStartService()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	// 弹出
+	int result = AfxMessageBox(_T("需要全量同步目录么?"), MB_YESNO | MB_ICONQUESTION);
+	// 判断用户选择的按钮
+	if (result == IDYES)
+	{
+		WritePrivateProfileString(_T("monitor"), _T("init_sync_all"), _T("1"), m_iniPath);
+	}
+	else
+	{
+		WritePrivateProfileString(_T("monitor"), _T("init_sync_all"), _T("0"), m_iniPath);
+	}
+
+	// 重启服务
 	CString strExePath = GetAppDirectory(true);
 	CString goExePath;
 	goExePath.Format(_T("%s\\%s"), strExePath, m_strProgName);
@@ -1160,7 +1176,7 @@ void CsshcmDlg::OnBnClickedBtnStartService()
 	m_editLog.ReplaceSel(_T("")); // 用空字符串替换
 	m_editLog.LineScroll(0);      // 滚动回顶部
 	AppendLog(_T("重新启动服务...\r\n"));
-	
+
 	KillProcessByName(m_strProgName);
 	Sleep(200);
 	StartProcessAndCapture(goExePath);
@@ -1462,7 +1478,10 @@ void CsshcmDlg::OnBnClickedBtnSaveMonitor()
 	int nSel = m_comboServers.GetCurSel();
 	if (nSel != CB_ERR)
 	{
-		m_comboServers.GetLBText(nSel, strSshServerName);
+		if (nSel != 0)
+		{
+			m_comboServers.GetLBText(nSel, strSshServerName);
+		}
 	}
 
 	if (m_strMonitorDir.IsEmpty())
@@ -1499,8 +1518,7 @@ void CsshcmDlg::LoadMonitorConf()
 	}
 	else
 	{
-		if (m_comboServers.GetCount() > 0)
-			m_comboServers.SetCurSel(0);
+		m_comboServers.SetCurSel(0);
 	}
 
 	UpdateData(FALSE);
@@ -1513,4 +1531,52 @@ void CsshcmDlg::OnBnClickedBtnRefreshMonitor()
 	// TODO: 在此添加控件通知处理程序代码
 	LoadIniToList();
 	LoadMonitorConf();
+}
+
+
+
+void CsshcmDlg::CopyToClipboard(const CString& text)
+{
+	if (!OpenClipboard())
+		return;
+
+	EmptyClipboard();
+
+	SIZE_T size = (text.GetLength() + 1) * sizeof(wchar_t);
+	HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, size);
+	if (hMem)
+	{
+		memcpy(GlobalLock(hMem), text.GetString(), size);
+		GlobalUnlock(hMem);
+		SetClipboardData(CF_UNICODETEXT, hMem);
+	}
+
+	CloseClipboard();
+}
+
+void CsshcmDlg::OnNMClickSshList(NMHDR* pNMHDR, LRESULT* pResult)
+{
+	LPNMITEMACTIVATE pNM = reinterpret_cast<LPNMITEMACTIVATE>(pNMHDR);
+
+	// 是否点中有效行和列
+	if (pNM->iItem < 0 || pNM->iSubItem < 0)
+		return;
+
+	const int PASSWORD_COL = 4; // 密码列索引
+	if (pNM->iSubItem != PASSWORD_COL)
+		return;
+
+	// 从真实数据源获取密码
+	CString password = m_listHosts.GetItemText(pNM->iItem, pNM->iSubItem);
+	if (password.IsEmpty())
+		return;
+
+	CopyToClipboard(password);
+	*pResult = 0;
+	AfxMessageBox(_T("密码已复制到剪贴板"), MB_ICONINFORMATION);
+}
+
+void CsshcmDlg::OnStnClickedStaticTotal()
+{
+	// TODO: 在此添加控件通知处理程序代码
 }

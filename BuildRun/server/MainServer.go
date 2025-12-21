@@ -3,10 +3,12 @@ package server
 import (
 	"BuildRun/pkg/conf"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"strings"
+	"time"
 )
 
 type JsonCmd struct {
@@ -18,6 +20,7 @@ type JsonCmd struct {
 	DstPath    string `json:"dst_path"`
 	CmdExec    string `json:"cmd_exec"`
 	WarnMsg    string `json:"warn_msg"`
+	NeedToast  string `json:"need_toast"`
 }
 
 type JsonResp struct {
@@ -41,7 +44,7 @@ type Server struct {
 	MonitorService *MonitorDirService
 }
 
-func NewServer(ipAddr string, bindPort int) *Server {
+func NewServer(ipAddr string, bindPort int) (*Server, error) {
 	// 初始SSH配置
 	sshConfObj := conf.NewSshConfig()
 	sshConfObj.LoadHostConf()
@@ -60,47 +63,59 @@ func NewServer(ipAddr string, bindPort int) *Server {
 	// 初始化toast服务
 	s.ToastCh = make(chan string)
 	s.ToastService = NewToastService(s.ToastCh)
-	s.ToastService.Run()
 
 	// 初始化钉钉消息
 	s.DingService = NewDdNoticeService(s.ToastService)
-	s.DingService.Run()
-
-	// 初始化scp会话
-	s.fileService = NewFileTransferService(s.ToastService)
 
 	// 初始化ssh会话
-	s.CmdService = NewCommandExecService(s.ToastService)
+	s.CmdService = NewCommandExecService(s.sshConfObj, s.ToastService)
+
+	// 初始化scp会话
+	s.fileService = NewFileTransferService(s.sshConfObj, s.CmdService, s.ToastService)
 
 	// 初始化监控服务
-	s.MonitorService = NewMonitorDirService(s.sshConfObj, s.monConfObj, s.fileService)
-	go s.MonitorService.Run()
+	s.MonitorService = NewMonitorDirService(s.sshConfObj, s.monConfObj, s.fileService, s.ToastService, 500*time.Millisecond)
 
-	return s
+	return s, nil
 }
 
-func (s *Server) Start() {
+func (s *Server) acceptLoop() {
+	for {
+		conn, err := s.ln.Accept()
+		if err != nil {
+			// 正常关闭 listener 时会触发
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+
+			fmt.Printf("Error accepting connection: %v\n", err)
+			continue
+		}
+
+		go s.handleConnection(conn)
+	}
+}
+
+func (s *Server) Start() error {
+
+	// 启动后台服务（不阻塞）
+	s.ToastService.Run()
+	s.DingService.Run()
 
 	// 启动监听
 	addr := fmt.Sprintf("%s:%d", s.ipAddr, s.bindPort)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		fmt.Printf("Error listening on %s: %s\n", addr, err)
-		return
+		return fmt.Errorf("listen %s failed: %w", addr, err)
 	}
 	s.ln = ln
 	fmt.Printf("Listening on %s\n", addr)
 
 	// 启动Accept
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			fmt.Printf("Error accepting connection: %s\n", err)
-			continue
-		}
-		go s.handleConnection(conn)
-	}
+	go s.acceptLoop()
+	go s.MonitorService.Run()
 
+	return nil
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
@@ -132,11 +147,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 	// 根据命令分配给不同的Service
 	cmd := cmdJson.OperAction
 	switch cmd {
-	case "send_file":
-		err = s.fileService.HandleCommand(s.sshConfObj, cmdJson)
-		break
 	case "exec_cmd":
-		err = s.CmdService.HandleCommand(s.sshConfObj, cmdJson)
+		err = s.CmdService.HandleCommand(cmdJson)
+		break
+	case "send_file":
+		err = s.fileService.HandleCommand(cmdJson)
 		break
 	case "print_scp_session":
 		s.fileService.PrintAllSess()
@@ -174,5 +189,13 @@ func (s *Server) handleConnection(conn net.Conn) {
 }
 
 func (s *Server) Stop() {
+	/*
+		if s.ln != nil {
+			s.ln.Close()
+		}
 
+		s.MonitorService.Stop()
+		s.ToastService.Stop()
+		s.DingService.Stop()
+	*/
 }

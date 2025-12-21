@@ -91,6 +91,7 @@ func (s *ScpSess) UploadFileToRemote(strLocalPath string, strRemotePath string) 
 		fmt.Printf("Error opening file %s: %s\n", strLocalPath, err)
 		return err
 	}
+	defer f.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -22,7 +22,7 @@ func NewToastService(toastCh chan string) *ToastService {
 	}
 }
 
-func (t *ToastService) Execute(msg string) {
+func (t *ToastService) executeToast(msg string) {
 
 	var jsonToastObj JsonToastCmd
 	err := json.Unmarshal([]byte(msg), &jsonToastObj)
@@ -49,10 +49,14 @@ func (t *ToastService) Run() {
 			select {
 			case msg := <-t.ToastCh:
 				fmt.Println("Receive toast msg:", msg)
-				t.Execute(msg)
+				t.executeToast(msg)
 			}
 		}
 	}()
+}
+
+func (t *ToastService) SendToastMsg(msg string) {
+	t.ToastCh <- msg
 }
 
 func (t *ToastService) HandleCommand(cmdJson JsonCmd) {
@@ -72,10 +76,6 @@ func (t *ToastService) HandleCommand(cmdJson JsonCmd) {
 	}
 
 	t.SendToastMsg(string(jsonStr))
-}
-
-func (t *ToastService) SendToastMsg(msg string) {
-	t.ToastCh <- msg
 }
 
 func (t *ToastService) stop() {

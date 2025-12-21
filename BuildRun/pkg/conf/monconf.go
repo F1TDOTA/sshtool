@@ -10,10 +10,11 @@ import (
 )
 
 type MonitorConf struct {
-	confPath   string
-	MonitorDir string `json:"monitor_dir"`
-	UploadHost string `json:"upload_host"`
-	UploadPath string `json:"upload_path"`
+	confPath    string
+	MonitorDir  string `json:"monitor_dir"`
+	UploadHost  string `json:"upload_host"`
+	UploadPath  string `json:"upload_path"`
+	InitSyncAll int    `json:"init_sync_all"`
 }
 
 func NewMonitorConf() *MonitorConf {
@@ -39,9 +40,11 @@ func (c *MonitorConf) LoadMonitorConf() {
 	c.MonitorDir = cfg.Section("monitor").Key("monitor_dir").String()
 	c.UploadHost = cfg.Section("monitor").Key("upload_host").String()
 	c.UploadPath = cfg.Section("monitor").Key("upload_path").String()
+	c.InitSyncAll = cfg.Section("monitor").Key("init_sync_all").MustInt(0)
 
 	fmt.Printf("monitor dir: %s\n", c.MonitorDir)
 	fmt.Printf("upload host: %s\n", c.UploadHost)
 	fmt.Printf("upload path: %s\n", c.UploadPath)
+	fmt.Printf("init sync all: %d\n", c.InitSyncAll)
 	return
 }
