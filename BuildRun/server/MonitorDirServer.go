@@ -265,14 +265,14 @@ func (s *MonitorDirService) Run() error {
 
 	// 判断SSH服务器是否存在
 	strSshIp := s.extractIP(s.monConfObj.UploadHost)
-	fmt.Printf("parse monitor ip: %s\n", strSshIp)
+	fmt.Println("[monitor upload ip]: ", strSshIp)
 	_, ok := s.sshConfObj.GetIpConf(strSshIp)
 	if ok != true {
 		return fmt.Errorf("dst ssh ip %s not exists", strSshIp)
 	}
 
 	// 检查上传路径是否为目录
-	strUploadRoot := string(s.monConfObj.UploadPath)
+	strUploadRoot := s.monConfObj.UploadPath
 	if strUploadRoot == "" {
 		return fmt.Errorf("upload path is empty")
 	}
